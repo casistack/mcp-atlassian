@@ -58,3 +58,5 @@ local/
 # Credentials
 .pypirc
 ProjectPlan.md
+.coverage
+tests/.env.test

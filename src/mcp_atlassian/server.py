@@ -11,6 +11,8 @@ from pydantic import AnyUrl
 
 from .confluence import ConfluenceFetcher
 from .jira import JiraFetcher
+from .search import UnifiedSearch
+from .content import TemplateHandler
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -19,6 +21,7 @@ logger = logging.getLogger("mcp-atlassian")
 # Initialize the content fetchers
 confluence_fetcher = ConfluenceFetcher()
 jira_fetcher = JiraFetcher()
+unified_search = UnifiedSearch(confluence_fetcher, jira_fetcher)
 app = Server("mcp-atlassian")
 
 
@@ -122,6 +125,32 @@ async def read_resource(uri: AnyUrl) -> str:
 async def list_tools() -> list[Tool]:
     """List available Confluence and Jira tools."""
     return [
+        Tool(
+            name="unified_search",
+            description="Search across both Confluence and Jira platforms",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query string",
+                    },
+                    "platforms": {
+                        "type": "array",
+                        "description": "Optional list of platforms to search ('confluence', 'jira')",
+                        "items": {"type": "string", "enum": ["confluence", "jira"]},
+                    },
+                    "limit": {
+                        "type": "number",
+                        "description": "Maximum number of results (1-50)",
+                        "default": 10,
+                        "minimum": 1,
+                        "maximum": 50,
+                    },
+                },
+                "required": ["query"],
+            },
+        ),
         Tool(
             name="confluence_search",
             description="Search Confluence content using CQL",
@@ -230,6 +259,74 @@ async def list_tools() -> list[Tool]:
                 "required": ["project_key"],
             },
         ),
+        Tool(
+            name="get_confluence_templates",
+            description="Get available Confluence templates (blueprints and custom templates)",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+            },
+        ),
+        Tool(
+            name="get_jira_templates",
+            description="Get available Jira issue templates",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+            },
+        ),
+        Tool(
+            name="create_from_confluence_template",
+            description="Create a new Confluence page from a template",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "template_id": {
+                        "type": "string",
+                        "description": "ID of the template to use",
+                    },
+                    "space_key": {
+                        "type": "string",
+                        "description": "Key of the space to create page in",
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Title for the new page",
+                    },
+                    "template_parameters": {
+                        "type": "object",
+                        "description": "Optional parameters to fill in template",
+                    },
+                },
+                "required": ["template_id", "space_key", "title"],
+            },
+        ),
+        Tool(
+            name="create_from_jira_template",
+            description="Create a new Jira issue from a template",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "template_id": {
+                        "type": "string",
+                        "description": "ID of the template to use",
+                    },
+                    "project_key": {
+                        "type": "string",
+                        "description": "Key of the project to create issue in",
+                    },
+                    "summary": {
+                        "type": "string",
+                        "description": "Issue summary",
+                    },
+                    "template_parameters": {
+                        "type": "object",
+                        "description": "Optional parameters to fill in template",
+                    },
+                },
+                "required": ["template_id", "project_key", "summary"],
+            },
+        ),
     ]
 
 
@@ -237,7 +334,31 @@ async def list_tools() -> list[Tool]:
 async def call_tool(name: str, arguments: Any) -> Sequence[TextContent]:
     """Handle tool calls for Confluence and Jira operations."""
     try:
-        if name == "confluence_search":
+        if name == "unified_search":
+            limit = min(int(arguments.get("limit", 10)), 50)
+            platforms = arguments.get("platforms")
+            results = unified_search.search(
+                query=arguments["query"], platforms=platforms, limit=limit
+            )
+            formatted_results = [
+                {
+                    "id": result.id,
+                    "title": result.title,
+                    "content": result.content,
+                    "url": result.url,
+                    "platform": result.platform,
+                    "last_modified": result.last_modified,
+                    "content_type": result.content_type,
+                    "space_or_project": result.space_or_project,
+                    "author": result.author,
+                }
+                for result in results
+            ]
+            return [
+                TextContent(type="text", text=json.dumps(formatted_results, indent=2))
+            ]
+
+        elif name == "confluence_search":
             limit = min(int(arguments.get("limit", 10)), 50)
             documents = confluence_fetcher.search(arguments["query"], limit)
             search_results = [
@@ -329,6 +450,111 @@ async def call_tool(name: str, arguments: Any) -> Sequence[TextContent]:
                 for doc in documents
             ]
             return [TextContent(type="text", text=json.dumps(project_issues, indent=2))]
+
+        elif name == "get_confluence_templates":
+            templates = TemplateHandler.get_confluence_templates(
+                confluence_fetcher.confluence
+            )
+            return [TextContent(type="text", text=json.dumps(templates, indent=2))]
+
+        elif name == "get_jira_templates":
+            templates = TemplateHandler.get_jira_templates(jira_fetcher.jira)
+            return [TextContent(type="text", text=json.dumps(templates, indent=2))]
+
+        elif name == "create_from_confluence_template":
+            content = TemplateHandler.apply_confluence_template(
+                confluence_fetcher.confluence,
+                template_id=arguments["template_id"],
+                space_key=arguments["space_key"],
+                title=arguments["title"],
+                template_parameters=arguments.get("template_parameters"),
+            )
+
+            if content:
+                # Create the page with template content
+                doc = confluence_fetcher.create_page(
+                    space_key=arguments["space_key"],
+                    title=arguments["title"],
+                    body=content,
+                    representation="storage",
+                )
+
+                if doc:
+                    return [
+                        TextContent(
+                            type="text",
+                            text=json.dumps(
+                                {
+                                    "success": True,
+                                    "page_id": doc.metadata["page_id"],
+                                    "title": doc.metadata["title"],
+                                    "url": doc.metadata["url"],
+                                    "content": doc.page_content,
+                                },
+                                indent=2,
+                            ),
+                        )
+                    ]
+
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {
+                            "success": False,
+                            "error": "Failed to create page from template",
+                        }
+                    ),
+                )
+            ]
+
+        elif name == "create_from_jira_template":
+            fields = TemplateHandler.apply_jira_template(
+                jira_fetcher.jira,
+                template_id=arguments["template_id"],
+                project_key=arguments["project_key"],
+                summary=arguments["summary"],
+                template_parameters=arguments.get("template_parameters"),
+            )
+
+            if fields:
+                # Create the issue with template fields
+                doc = jira_fetcher.create_issue(
+                    project_key=arguments["project_key"],
+                    summary=arguments["summary"],
+                    **fields,
+                )
+
+                if doc:
+                    return [
+                        TextContent(
+                            type="text",
+                            text=json.dumps(
+                                {
+                                    "success": True,
+                                    "key": doc.metadata["key"],
+                                    "title": doc.metadata["title"],
+                                    "status": doc.metadata["status"],
+                                    "type": doc.metadata["type"],
+                                    "url": doc.metadata["link"],
+                                    "description": doc.page_content,
+                                },
+                                indent=2,
+                            ),
+                        )
+                    ]
+
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {
+                            "success": False,
+                            "error": "Failed to create issue from template",
+                        }
+                    ),
+                )
+            ]
 
         raise ValueError(f"Unknown tool: {name}")
 

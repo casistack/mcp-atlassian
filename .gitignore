@@ -60,3 +60,4 @@ local/
 ProjectPlan.md
 .coverage
 tests/.env.test
+.env.test

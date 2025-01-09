@@ -19,6 +19,7 @@ class AttachmentInfo:
     url: str
     id: str
     created: str
+    container: dict
     creator: Optional[str] = None
 
 
@@ -99,11 +100,14 @@ class AttachmentHandler:
             AttachmentInfo object with formatted data
         """
         return AttachmentInfo(
-            filename=attachment.get("filename", ""),
-            content_type=attachment.get("mimeType", attachment.get("contentType", "")),
+            filename=attachment.get("filename") or attachment.get("title", ""),
+            content_type=attachment.get("mimeType")
+            or attachment.get("contentType")
+            or attachment.get("metadata", {}).get("mediaType", ""),
             size=attachment.get("size", 0),
             url=f"{base_url.rstrip('/')}/secure/attachment/{attachment.get('id', '')}",
             id=str(attachment.get("id", "")),
             created=attachment.get("created", ""),
+            container=attachment.get("container", {}),
             creator=attachment.get("author", {}).get("displayName", None),
         )

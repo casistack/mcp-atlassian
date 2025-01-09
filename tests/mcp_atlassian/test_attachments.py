@@ -158,3 +158,23 @@ class TestAttachmentHandler:
 
         assert isinstance(info, AttachmentInfo)
         assert info.content_type == "text/plain"
+
+    def test_attachment_info_initialization(self):
+        info = AttachmentInfo(
+            filename="test.txt",
+            content_type="text/plain",
+            size=100,
+            url="http://example.com",
+            id="123",
+            created="2023-01-01",
+            creator="testuser",
+            container={"key": "TEAM"},
+        )
+        assert info.filename == "test.txt"
+        assert info.content_type == "text/plain"
+        assert info.size == 100
+        assert info.url == "http://example.com"
+        assert info.id == "123"
+        assert info.created == "2023-01-01"
+        assert info.creator == "testuser"
+        assert info.container["key"] == "TEAM"

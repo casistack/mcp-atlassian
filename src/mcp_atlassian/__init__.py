@@ -1,11 +1,12 @@
 """MCP Atlassian Integration Package"""
 
 import os
-
 import asyncio
 
-from . import server
+# Core components that should always be available
+from .config import ConfluenceConfig, JiraConfig
 
+# Only import server-related components when not in testing mode
 if not os.getenv("TESTING"):
     from . import server
     from .config import Config
@@ -16,10 +17,9 @@ if not os.getenv("TESTING"):
 
 __version__ = "0.1.7"
 
-
 def main():
     """Main entry point for the package."""
-    asyncio.run(server.main())
+    if not os.getenv("TESTING"):
+        asyncio.run(server.main())
 
-
-__all__ = ["main", "server", "__version__"]
+__all__ = ["main", "server", "__version__", "ConfluenceConfig", "JiraConfig"]

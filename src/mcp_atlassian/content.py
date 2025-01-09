@@ -266,7 +266,17 @@ class ContentEditor:
     def update_table_row(
         content: str, table_start: str, row_identifier: str, new_values: list[str]
     ) -> str:
-        """Update a specific row in a table."""
+        """Update a specific row in a table.
+
+        Args:
+            content: The content containing the table
+            table_start: Text that uniquely identifies the table header
+            row_identifier: Text that uniquely identifies the row to update
+            new_values: New values for the row cells
+
+        Returns:
+            Updated content with the modified table row
+        """
         lines = content.split("\n")
         table_start_idx = -1
         row_idx = -1
@@ -275,6 +285,11 @@ class ContentEditor:
         for i, line in enumerate(lines):
             if table_start in line:
                 table_start_idx = i
+                # Count columns in header
+                header_cols = line.count("||") - 1
+                # Validate column count
+                if len(new_values) != header_cols:
+                    return content  # Return unchanged if column counts don't match
             elif table_start_idx != -1 and row_identifier in line:
                 row_idx = i
                 break

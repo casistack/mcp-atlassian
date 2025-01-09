@@ -1,330 +1,486 @@
 import pytest
 from unittest.mock import MagicMock, patch
 from mcp_atlassian.confluence import ConfluenceFetcher
-from mcp_atlassian.config import ConfluenceConfig
 from mcp_atlassian.types import Document
+from mcp_atlassian.attachments import AttachmentInfo
+from pathlib import Path
 
 
 @pytest.fixture
-def mock_env_vars(monkeypatch):
-    """Set up mock environment variables for testing."""
-    monkeypatch.setenv("CONFLUENCE_URL", "https://test.atlassian.net")
-    monkeypatch.setenv("CONFLUENCE_USERNAME", "test@example.com")
-    monkeypatch.setenv("CONFLUENCE_API_TOKEN", "test-token")
+def mock_env_vars():
+    with patch.dict(
+        "os.environ",
+        {
+            "CONFLUENCE_URL": "https://example.atlassian.net",
+            "CONFLUENCE_USERNAME": "test@example.com",
+            "CONFLUENCE_API_TOKEN": "test-token",
+        },
+    ):
+        yield
 
 
 @pytest.fixture
-def mock_confluence():
-    """Create a mock Confluence client."""
-    return MagicMock()
+def mock_confluence_client(mocker):
+    mock = mocker.MagicMock()
+    mock.update_page.return_value = {
+        "id": "12345",
+        "title": "Test Page",
+        "body": {"storage": {"value": "<p>Updated content</p>"}},
+        "version": {"number": 2},
+        "space": {"key": "TEAM"},
+    }
+    return mock
 
 
 @pytest.fixture
-def mock_preprocessor():
-    """Create a mock TextPreprocessor."""
-    return MagicMock()
+def mock_preprocessor(mocker):
+    mock = mocker.MagicMock()
+    mock.process_html_content.return_value = (
+        "<p>Processed HTML</p>",
+        "Processed Markdown",
+    )
+    return mock
 
 
-class TestConfluenceFetcher:
-    def test_initialization_success(self, mock_env_vars):
-        """Test successful initialization with valid environment variables."""
-        fetcher = ConfluenceFetcher()
-        assert isinstance(fetcher.config, ConfluenceConfig)
-        assert fetcher.config.url == "https://test.atlassian.net"
-        assert fetcher.config.username == "test@example.com"
-        assert fetcher.config.api_token == "test-token"
+@pytest.fixture
+def confluence_fetcher(mock_env_vars, mock_confluence_client, mock_preprocessor):
+    fetcher = ConfluenceFetcher()
+    fetcher.confluence = mock_confluence_client
+    fetcher.preprocessor = mock_preprocessor
+    return fetcher
 
-    def test_initialization_missing_env_vars(self, monkeypatch):
-        """Test initialization fails with missing environment variables."""
-        # Clear environment variables
-        monkeypatch.delenv("CONFLUENCE_URL", raising=False)
-        monkeypatch.delenv("CONFLUENCE_USERNAME", raising=False)
-        monkeypatch.delenv("CONFLUENCE_API_TOKEN", raising=False)
 
+def test_init_with_missing_env_vars():
+    with patch.dict("os.environ", {}, clear=True):
         with pytest.raises(
             ValueError, match="Missing required Confluence environment variables"
         ):
             ConfluenceFetcher()
 
-    @patch("mcp_atlassian.confluence.Confluence")
-    @patch("mcp_atlassian.confluence.TextPreprocessor")
-    def test_get_spaces(
-        self, mock_preprocessor_class, mock_confluence_class, mock_env_vars
-    ):
-        """Test getting Confluence spaces."""
-        # Setup mock response
-        mock_confluence = mock_confluence_class.return_value
-        mock_confluence.get_all_spaces.return_value = {
-            "results": [
-                {"id": "1", "key": "SPACE1", "name": "Space 1"},
-                {"id": "2", "key": "SPACE2", "name": "Space 2"},
-            ]
-        }
 
-        fetcher = ConfluenceFetcher()
-        spaces = fetcher.get_spaces(start=0, limit=10)
+def test_get_spaces(confluence_fetcher, mock_confluence_client):
+    # Mock response
+    mock_confluence_client.get_all_spaces.return_value = {
+        "results": [
+            {"key": "TEAM", "name": "Team Space", "type": "global"},
+            {"key": "PROJ", "name": "Project Space", "type": "global"},
+        ]
+    }
 
-        # Verify the response
-        assert spaces["results"][0]["key"] == "SPACE1"
-        assert spaces["results"][1]["key"] == "SPACE2"
+    spaces = confluence_fetcher.get_spaces(start=0, limit=10)
+    assert spaces["results"][0]["key"] == "TEAM"
+    assert spaces["results"][1]["key"] == "PROJ"
+    mock_confluence_client.get_all_spaces.assert_called_once_with(start=0, limit=10)
 
-        # Verify the API call
-        mock_confluence.get_all_spaces.assert_called_once_with(start=0, limit=10)
 
-    @patch("mcp_atlassian.confluence.Confluence")
-    @patch("mcp_atlassian.confluence.TextPreprocessor")
-    def test_get_page_content(
-        self, mock_preprocessor_class, mock_confluence_class, mock_env_vars
-    ):
-        """Test getting page content."""
-        # Setup mock response
-        mock_confluence = mock_confluence_class.return_value
-        mock_confluence.get_page_by_id.return_value = {
-            "id": "123",
-            "title": "Test Page",
-            "space": {"key": "SPACE1", "name": "Test Space"},
-            "body": {
-                "storage": {"value": "<p>test content</p>", "representation": "storage"}
-            },
-            "version": {
-                "number": 1,
-                "by": {"displayName": "Test User"},
-                "when": "2024-01-09T12:00:00Z",
-            },
-        }
+def test_get_page_content(
+    confluence_fetcher, mock_confluence_client, mock_preprocessor
+):
+    # Mock response
+    mock_confluence_client.get_page_by_id.return_value = {
+        "id": "12345",
+        "title": "Test Page",
+        "body": {"storage": {"value": "<p>Test content</p>"}},
+        "version": {
+            "number": 1,
+            "by": {"displayName": "Test User"},
+            "when": "2024-01-09T12:00:00Z",
+        },
+        "space": {"key": "TEAM", "name": "Team Space"},
+    }
 
-        # Setup mock preprocessor
-        mock_preprocessor = mock_preprocessor_class.return_value
-        mock_preprocessor.process_html_content.return_value = (
-            "processed text",
-            "processed html",
-        )
+    result = confluence_fetcher.get_page_content("12345")
+    assert isinstance(result, Document)
+    assert result.metadata["page_id"] == "12345"
+    assert result.metadata["title"] == "Test Page"
+    assert result.metadata["version"] == 1
+    assert result.metadata["space_key"] == "TEAM"
+    assert result.metadata["author_name"] == "Test User"
+    mock_confluence_client.get_page_by_id.assert_called_once()
+    mock_preprocessor.process_html_content.assert_called_once()
 
-        fetcher = ConfluenceFetcher()
-        doc = fetcher.get_page_content("123")
 
-        assert isinstance(doc, Document)
-        assert doc.page_content == "processed text"  # clean_html=True by default
-        assert doc.metadata["page_id"] == "123"
-        assert doc.metadata["title"] == "Test Page"
-        assert doc.metadata["version"] == 1
-        assert doc.metadata["space_key"] == "SPACE1"
-        assert doc.metadata["author_name"] == "Test User"
+def test_get_page_by_title(
+    confluence_fetcher, mock_confluence_client, mock_preprocessor
+):
+    # Mock response
+    mock_confluence_client.get_page_by_title.return_value = {
+        "id": "12345",
+        "title": "Test Page",
+        "body": {"storage": {"value": "<p>Test content</p>"}},
+        "version": {"number": 1},
+        "space": {"key": "TEAM"},
+    }
 
-        # Test with clean_html=False
-        doc = fetcher.get_page_content("123", clean_html=False)
-        assert doc.page_content == "processed html"
+    result = confluence_fetcher.get_page_by_title("TEAM", "Test Page")
+    assert isinstance(result, Document)
+    assert result.metadata["page_id"] == "12345"
+    assert result.metadata["title"] == "Test Page"
+    mock_confluence_client.get_page_by_title.assert_called_once()
+    mock_preprocessor.process_html_content.assert_called_once()
 
-    @patch("mcp_atlassian.confluence.Confluence")
-    @patch("mcp_atlassian.confluence.TextPreprocessor")
-    def test_get_page_by_title(
-        self, mock_preprocessor_class, mock_confluence_class, mock_env_vars
-    ):
-        """Test getting page by title."""
-        # Setup mock response
-        mock_confluence = mock_confluence_class.return_value
-        mock_confluence.get_page_by_title.return_value = {
-            "id": "123",
-            "title": "Test Page",
-            "body": {
-                "storage": {"value": "<p>test content</p>", "representation": "storage"}
-            },
+    # Test non-existent page
+    mock_confluence_client.get_page_by_title.return_value = None
+    result = confluence_fetcher.get_page_by_title("TEAM", "Non-existent Page")
+    assert result is None
+
+
+def test_get_space_pages(confluence_fetcher, mock_confluence_client, mock_preprocessor):
+    # Mock response
+    mock_confluence_client.get_all_pages_from_space.return_value = [
+        {
+            "id": "12345",
+            "title": "Page 1",
+            "body": {"storage": {"value": "<p>Content 1</p>"}},
             "version": {"number": 1},
-        }
-
-        # Setup mock preprocessor
-        mock_preprocessor = mock_preprocessor_class.return_value
-        mock_preprocessor._clean_html_content.return_value = "cleaned content"
-
-        fetcher = ConfluenceFetcher()
-        doc = fetcher.get_page_by_title("SPACE1", "Test Page")
-
-        assert isinstance(doc, Document)
-        assert doc.page_content == "cleaned content"  # clean_html=True by default
-        assert doc.metadata["page_id"] == "123"
-        assert doc.metadata["title"] == "Test Page"
-        assert doc.metadata["version"] == 1
-        assert doc.metadata["space_key"] == "SPACE1"
-
-    @patch("mcp_atlassian.confluence.Confluence")
-    @patch("mcp_atlassian.confluence.TextPreprocessor")
-    def test_create_page(
-        self, mock_preprocessor_class, mock_confluence_class, mock_env_vars
-    ):
-        """Test creating a new page."""
-        # Setup mock responses
-        mock_confluence = mock_confluence_class.return_value
-        mock_confluence.create_page.return_value = {
-            "id": "123",
-            "title": "New Page",
-            "space": {"key": "SPACE1"},
+            "space": {"key": "TEAM"},
+        },
+        {
+            "id": "67890",
+            "title": "Page 2",
+            "body": {"storage": {"value": "<p>Content 2</p>"}},
             "version": {"number": 1},
-        }
+            "space": {"key": "TEAM"},
+        },
+    ]
 
-        # Mock get_page_content response for the created page
-        mock_confluence.get_page_by_id.return_value = {
-            "id": "123",
-            "title": "New Page",
-            "space": {"key": "SPACE1"},
-            "body": {"storage": {"value": "<p>new content</p>"}},
-            "version": {"number": 1},
-        }
+    results = confluence_fetcher.get_space_pages("TEAM", start=0, limit=10)
+    assert len(results) == 2
+    assert all(isinstance(doc, Document) for doc in results)
+    assert results[0].metadata["page_id"] == "12345"
+    assert results[1].metadata["page_id"] == "67890"
+    mock_confluence_client.get_all_pages_from_space.assert_called_once()
+    assert mock_preprocessor.process_html_content.call_count == 2
 
-        # Setup mock preprocessor
-        mock_preprocessor = mock_preprocessor_class.return_value
-        mock_preprocessor.process_html_content.return_value = (
-            "processed text",
-            "processed html",
-        )
 
-        fetcher = ConfluenceFetcher()
-        doc = fetcher.create_page(
-            space_key="SPACE1",
-            title="New Page",
-            body="<p>new content</p>",
-            parent_id="456",
-        )
+def test_create_page(confluence_fetcher, mock_confluence_client):
+    # Mock create_page response
+    mock_confluence_client.create_page.return_value = {
+        "id": "12345",
+        "title": "New Page",
+        "space": {"key": "TEAM"},
+    }
 
-        assert isinstance(doc, Document)
-        assert doc.metadata["page_id"] == "123"
-        assert doc.metadata["title"] == "New Page"
-        mock_confluence.create_page.assert_called_once_with(
-            space="SPACE1",
-            title="New Page",
-            body="<p>new content</p>",
-            parent_id="456",
-            representation="storage",
-        )
+    # Mock get_page_by_id response for the created page
+    mock_confluence_client.get_page_by_id.return_value = {
+        "id": "12345",
+        "title": "New Page",
+        "body": {"storage": {"value": "<p>New content</p>"}},
+        "version": {"number": 1},
+        "space": {"key": "TEAM"},
+    }
 
-    @patch("mcp_atlassian.confluence.Confluence")
-    @patch("mcp_atlassian.confluence.TextPreprocessor")
-    def test_update_page(
-        self, mock_preprocessor_class, mock_confluence_class, mock_env_vars
-    ):
-        """Test updating an existing page."""
-        # Setup mock responses
-        mock_confluence = mock_confluence_class.return_value
-        mock_confluence.update_page.return_value = {
-            "id": "123",
-            "title": "Updated Page",
-            "space": {"key": "SPACE1"},
-            "version": {"number": 2},
-        }
+    result = confluence_fetcher.create_page(
+        space_key="TEAM", title="New Page", body="New content"
+    )
 
-        # Mock get_page_content response for the updated page
-        mock_confluence.get_page_by_id.return_value = {
-            "id": "123",
-            "title": "Updated Page",
-            "space": {"key": "SPACE1"},
-            "body": {"storage": {"value": "<p>updated content</p>"}},
-            "version": {"number": 2},
-        }
+    assert isinstance(result, Document)
+    assert result.metadata["page_id"] == "12345"
+    assert result.metadata["title"] == "New Page"
+    mock_confluence_client.create_page.assert_called_once()
 
-        # Setup mock preprocessor
-        mock_preprocessor = mock_preprocessor_class.return_value
-        mock_preprocessor.process_html_content.return_value = (
-            "processed text",
-            "processed html",
-        )
+    # Test creation failure
+    mock_confluence_client.create_page.return_value = None
+    result = confluence_fetcher.create_page(
+        space_key="TEAM", title="Failed Page", body="Content"
+    )
+    assert result is None
 
-        fetcher = ConfluenceFetcher()
-        doc = fetcher.update_page(
-            page_id="123",
-            title="Updated Page",
-            body="<p>updated content</p>",
-            minor_edit=True,
-        )
 
-        assert isinstance(doc, Document)
-        assert doc.metadata["page_id"] == "123"
-        assert doc.metadata["title"] == "Updated Page"
-        assert doc.metadata["version"] == 2
+def test_update_page(confluence_fetcher, mock_confluence_client):
+    # Mock update response
+    mock_confluence_client.update_page.return_value = {
+        "id": "12345",
+        "title": "Updated Page",
+        "space": {"key": "TEAM"},
+    }
 
-    @patch("mcp_atlassian.confluence.Confluence")
-    @patch("mcp_atlassian.confluence.TextPreprocessor")
-    def test_search(
-        self, mock_preprocessor_class, mock_confluence_class, mock_env_vars
-    ):
-        """Test searching content."""
-        # Setup mock responses
-        mock_confluence = mock_confluence_class.return_value
-        mock_confluence.cql.return_value = {
-            "results": [
-                {
-                    "content": {
-                        "id": "123",
-                        "type": "page",
-                        "title": "Test Page",
-                        "space": {"key": "SPACE1"},
-                    }
+    # Mock get_page_by_id response for the updated page
+    mock_confluence_client.get_page_by_id.return_value = {
+        "id": "12345",
+        "title": "Updated Page",
+        "body": {"storage": {"value": "<p>Updated content</p>"}},
+        "version": {"number": 2},
+        "space": {"key": "TEAM"},
+    }
+
+    result = confluence_fetcher.update_page(
+        page_id="12345", title="Updated Page", body="Updated content"
+    )
+
+    assert isinstance(result, Document)
+    assert result.metadata["page_id"] == "12345"
+    assert result.metadata["title"] == "Updated Page"
+    assert result.metadata["version"] == 2
+    mock_confluence_client.update_page.assert_called_once()
+
+    # Test update failure
+    mock_confluence_client.update_page.side_effect = Exception("Update failed")
+    result = confluence_fetcher.update_page(
+        page_id="12345", title="Failed Update", body="Content"
+    )
+    assert result is None
+
+
+def test_get_page_comments(
+    confluence_fetcher, mock_confluence_client, mock_preprocessor
+):
+    # Mock get_page_by_id response
+    mock_confluence_client.get_page_by_id.return_value = {
+        "space": {"key": "TEAM", "name": "Team Space"}
+    }
+
+    # Mock get_page_comments response
+    mock_confluence_client.get_page_comments.return_value = {
+        "results": [
+            {
+                "id": "comment1",
+                "body": {"view": {"value": "<p>Test comment</p>"}},
+                "version": {
+                    "by": {"displayName": "Test User"},
+                    "when": "2024-01-09T12:00:00Z",
+                },
+            }
+        ]
+    }
+
+    results = confluence_fetcher.get_page_comments("12345")
+    assert len(results) == 1
+    assert isinstance(results[0], Document)
+    assert results[0].metadata["comment_id"] == "comment1"
+    assert results[0].metadata["author_name"] == "Test User"
+    assert results[0].metadata["type"] == "comment"
+    mock_confluence_client.get_page_comments.assert_called_once()
+    mock_preprocessor.process_html_content.assert_called_once()
+
+
+def test_search(confluence_fetcher, mock_confluence_client, mock_preprocessor):
+    # Mock CQL search response
+    mock_confluence_client.cql.return_value = {
+        "results": [
+            {
+                "content": {
+                    "id": "12345",
+                    "type": "page",
+                    "title": "Test Page",
+                    "space": {"key": "TEAM"},
                 }
-            ]
-        }
+            }
+        ]
+    }
 
-        # Mock get_page_content response for the found page
-        mock_confluence.get_page_by_id.return_value = {
-            "id": "123",
-            "title": "Test Page",
-            "space": {"key": "SPACE1"},
-            "body": {"storage": {"value": "<p>test content</p>"}},
-            "version": {"number": 1},
-        }
+    # Mock get_page_by_id response for the found page
+    mock_confluence_client.get_page_by_id.return_value = {
+        "id": "12345",
+        "title": "Test Page",
+        "body": {"storage": {"value": "<p>Test content</p>"}},
+        "version": {"number": 1},
+        "space": {"key": "TEAM"},
+    }
 
-        # Setup mock preprocessor
-        mock_preprocessor = mock_preprocessor_class.return_value
-        mock_preprocessor.process_html_content.return_value = (
-            "processed text",
-            "processed html",
-        )
+    results = confluence_fetcher.search("text ~ 'test'", limit=10)
+    assert len(results) == 1
+    assert isinstance(results[0], Document)
+    assert results[0].metadata["page_id"] == "12345"
+    assert results[0].metadata["title"] == "Test Page"
+    mock_confluence_client.cql.assert_called_once()
 
-        fetcher = ConfluenceFetcher()
-        docs = fetcher.search("text ~ 'test'", limit=10)
+    # Test search error
+    mock_confluence_client.cql.side_effect = Exception("Search failed")
+    results = confluence_fetcher.search("invalid query")
+    assert results == []
 
-        assert len(docs) == 1
-        assert isinstance(docs[0], Document)
-        assert docs[0].metadata["page_id"] == "123"
-        assert docs[0].metadata["title"] == "Test Page"
-        mock_confluence.cql.assert_called_once_with("text ~ 'test'", limit=10)
 
-    @patch("mcp_atlassian.confluence.Confluence")
-    @patch("mcp_atlassian.confluence.TextPreprocessor")
-    def test_get_page_comments(
-        self, mock_preprocessor_class, mock_confluence_class, mock_env_vars
-    ):
-        """Test getting page comments."""
-        # Setup mock responses
-        mock_confluence = mock_confluence_class.return_value
-        mock_confluence.get_page_by_id.return_value = {
-            "space": {"key": "SPACE1", "name": "Test Space"}
-        }
-        mock_confluence.get_page_comments.return_value = {
-            "results": [
-                {
-                    "id": "comment1",
-                    "body": {"view": {"value": "<p>test comment</p>"}},
-                    "version": {
-                        "by": {"displayName": "Test User"},
-                        "when": "2024-01-09T12:00:00Z",
-                    },
-                }
-            ]
-        }
+def test_attachment_handling(confluence_fetcher, mock_confluence_client):
+    # Mock get_attachments response
+    mock_confluence_client.get_attachments_from_content.return_value = {
+        "results": [
+            {
+                "id": "att123",
+                "title": "test.txt",
+                "metadata": {"mediaType": "text/plain"},
+                "size": 1024,
+                "container": {"key": "TEAM"},
+            }
+        ]
+    }
 
-        # Setup mock preprocessor
-        mock_preprocessor = mock_preprocessor_class.return_value
-        mock_preprocessor.process_html_content.return_value = (
-            "processed text",
-            "processed html",
-        )
+    # Test get_attachments
+    attachments = confluence_fetcher.get_attachments("12345")
+    assert len(attachments) == 1
+    assert isinstance(attachments[0], AttachmentInfo)
+    assert attachments[0].id == "att123"
+    assert attachments[0].filename == "test.txt"
 
-        fetcher = ConfluenceFetcher()
-        comments = fetcher.get_page_comments("123")
+    # Test get_attachment_content
+    mock_confluence_client.get_attachment_content.return_value = b"test content"
+    content = confluence_fetcher.get_attachment_content("att123")
+    assert content == b"test content"
+    mock_confluence_client.get_attachment_content.assert_called_once()
 
-        assert len(comments) == 1
-        assert isinstance(comments[0], Document)
-        assert (
-            comments[0].page_content == "processed text"
-        )  # clean_html=True by default
-        assert comments[0].metadata["comment_id"] == "comment1"
-        assert comments[0].metadata["author_name"] == "Test User"
-        assert comments[0].metadata["type"] == "comment"
+    # Mock get_page_by_id response for add_attachment
+    mock_confluence_client.get_page_by_id.return_value = {
+        "id": "12345",
+        "space": {"key": "TEAM"},
+    }
+
+    # Test add_attachment
+    mock_confluence_client.attach_file.return_value = {
+        "id": "att456",
+        "title": "new.txt",
+        "metadata": {"mediaType": "text/plain"},
+        "size": 512,
+        "container": {"key": "TEAM"},
+        "_links": {"download": "/download/attachments/att456/new.txt"},
+        "created": "2023-01-01T00:00:00.000Z",
+    }
+
+    # Create a temporary test file
+    test_file = Path("test.txt")
+    test_file.write_text("test content")
+
+    result = confluence_fetcher.add_attachment("12345", test_file)
+    assert isinstance(result, AttachmentInfo)
+    assert result.id == "att456"
+    assert result.filename == "new.txt"
+    assert result.container["key"] == "TEAM"
+    mock_confluence_client.attach_file.assert_called_once()
+
+    # Clean up
+    test_file.unlink()
+
+    # Test delete_attachment
+    mock_confluence_client.delete_attachment.return_value = True
+    assert confluence_fetcher.delete_attachment("att123") is True
+    mock_confluence_client.delete_attachment.assert_called_once()
+
+
+def test_update_page_section(
+    confluence_fetcher, mock_confluence_client, mock_preprocessor
+):
+    # Mock get_page_by_id response
+    mock_confluence_client.get_page_by_id.return_value = {
+        "id": "12345",
+        "title": "Test Page",
+        "body": {"storage": {"value": "<h1>Test Section</h1><p>Old content</p>"}},
+        "version": {"number": 1},
+        "space": {"key": "TEAM"},
+    }
+
+    result = confluence_fetcher.update_page_section(
+        page_id="12345",
+        heading="Test Section",
+        new_content="Updated content",
+        minor_edit=True,
+    )
+
+    assert isinstance(result, Document)
+    assert result.metadata["page_id"] == "12345"
+    assert result.metadata["version"] == 2
+    mock_confluence_client.update_page.assert_called_once()
+
+
+def test_insert_after_section(
+    confluence_fetcher, mock_confluence_client, mock_preprocessor
+):
+    # Mock get_page_by_id response
+    mock_confluence_client.get_page_by_id.return_value = {
+        "id": "12345",
+        "title": "Test Page",
+        "body": {"storage": {"value": "<h1>Test Section</h1><p>Existing content</p>"}},
+        "version": {"number": 1},
+        "space": {"key": "TEAM"},
+    }
+
+    result = confluence_fetcher.insert_after_section(
+        page_id="12345",
+        heading="Test Section",
+        new_content="New content",
+        minor_edit=True,
+    )
+
+    assert isinstance(result, Document)
+    assert result.metadata["page_id"] == "12345"
+    assert result.metadata["version"] == 2
+    mock_confluence_client.update_page.assert_called_once()
+
+
+def test_append_to_list_in_section(
+    confluence_fetcher, mock_confluence_client, mock_preprocessor
+):
+    # Mock get_page_by_id response
+    mock_confluence_client.get_page_by_id.return_value = {
+        "id": "12345",
+        "title": "Test Page",
+        "body": {"storage": {"value": "h1. Test Section\n* Item 1\n* Item 2"}},
+        "version": {"number": 1},
+        "space": {"key": "TEAM"},
+    }
+
+    # Mock update response
+    mock_confluence_client.update_page.return_value = {
+        "id": "12345",
+        "title": "Test Page",
+        "body": {
+            "storage": {"value": "h1. Test Section\n* Item 1\n* Item 2\n* Item 3"}
+        },
+        "version": {"number": 2},
+        "space": {"key": "TEAM"},
+    }
+
+    result = confluence_fetcher.append_to_list_in_section(
+        page_id="12345",
+        heading="Test Section",
+        list_marker="*",
+        new_item="Item 3",
+        minor_edit=True,
+    )
+
+    assert isinstance(result, Document)
+    assert result.metadata["page_id"] == "12345"
+    assert result.metadata["version"] == 2
+    mock_confluence_client.update_page.assert_called_once()
+
+
+def test_update_table_in_section(
+    confluence_fetcher, mock_confluence_client, mock_preprocessor
+):
+    # Mock get_page_by_id response
+    mock_confluence_client.get_page_by_id.return_value = {
+        "id": "12345",
+        "title": "Test Page",
+        "body": {
+            "storage": {
+                "value": "h1. Test Section\n||Header 1||Header 2||\n|Value 1|Value 2|\n|Old 1|Old 2|"
+            }
+        },
+        "version": {"number": 1},
+        "space": {"key": "TEAM"},
+    }
+
+    # Mock update response
+    mock_confluence_client.update_page.return_value = {
+        "id": "12345",
+        "title": "Test Page",
+        "body": {
+            "storage": {
+                "value": "h1. Test Section\n||Header 1||Header 2||\n|Value 1|Value 2|\n|New 1|New 2|"
+            }
+        },
+        "version": {"number": 2},
+        "space": {"key": "TEAM"},
+    }
+
+    result = confluence_fetcher.update_table_in_section(
+        page_id="12345",
+        heading="Test Section",
+        table_start="||Header 1||Header 2||",
+        row_identifier="Old 1",
+        new_values=["New 1", "New 2"],
+        minor_edit=True,
+    )
+
+    assert isinstance(result, Document)
+    assert result.metadata["page_id"] == "12345"
+    assert result.metadata["version"] == 2
+    mock_confluence_client.update_page.assert_called_once()

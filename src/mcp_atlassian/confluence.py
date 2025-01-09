@@ -11,6 +11,7 @@ from .config import ConfluenceConfig
 from .preprocessing import TextPreprocessor
 from .types import Document
 from .attachments import AttachmentHandler, AttachmentInfo
+from .content import ContentEditor
 
 # Load environment variables
 load_dotenv()
@@ -38,11 +39,17 @@ class ConfluenceFetcher:
             cloud=True,
         )
         self.preprocessor = TextPreprocessor(self.config.url, self.confluence)
+        self.content_editor = ContentEditor()
 
     def _process_html_content(
         self, html_content: str, space_key: str
     ) -> tuple[str, str]:
         return self.preprocessor.process_html_content(html_content, space_key)
+
+    def _clean_html_content(self, html_content: str) -> str:
+        """Clean HTML content by removing unnecessary tags and formatting."""
+        cleaned_html, _ = self._process_html_content(html_content, "")
+        return cleaned_html
 
     def get_spaces(self, start: int = 0, limit: int = 10):
         """Get all available spaces."""
@@ -67,7 +74,7 @@ class ConfluenceFetcher:
         metadata = {
             "page_id": page_id,
             "title": page["title"],
-            "version": version.get("number"),
+            "version": version.get("number", 1),
             "url": f"{self.config.url}/wiki/spaces/{space_key}/pages/{page_id}",
             "space_key": space_key,
             "author_name": author.get("displayName"),
@@ -243,21 +250,21 @@ class ConfluenceFetcher:
             title: The new title of the page
             body: The new content of the page
             representation: Content representation ('storage' for wiki markup, 'editor' for rich text)
-            minor_edit: Whether this is a minor edit (affects notifications and version history)
+            minor_edit: Whether this is a minor edit
 
         Returns:
-            Updated Document object if successful, None otherwise
+            Document object if update successful, None otherwise
         """
         try:
-            # Get current version number
+            # Get current version
             current_page = self.confluence.get_page_by_id(
-                page_id=page_id, expand="version"
+                page_id=page_id, expand="version,space"
             )
             if not current_page:
-                logger.error(f"Page {page_id} not found")
                 return None
 
-            version = current_page["version"]["number"]
+            version = current_page.get("version", {}).get("number", 0)
+            space_key = current_page.get("space", {}).get("key", "")
 
             # Update the page
             updated_page = self.confluence.update_page(
@@ -266,11 +273,37 @@ class ConfluenceFetcher:
                 body=body,
                 representation=representation,
                 minor_edit=minor_edit,
-                version_number=version + 1,
+                version_number=version,
             )
 
             if updated_page and updated_page.get("id"):
-                return self.get_page_content(updated_page["id"])
+                # Get the updated page to ensure we have the correct version
+                updated_page = self.confluence.get_page_by_id(
+                    updated_page["id"], expand="body.storage,version,space"
+                )
+
+                # Process the content
+                content = (
+                    updated_page.get("body", {}).get("storage", {}).get("value", "")
+                )
+                processed_html, processed_markdown = self._process_html_content(
+                    content, space_key
+                )
+
+                # Get the version from the updated page
+                new_version = updated_page.get("version", {}).get("number", version + 1)
+
+                # Create metadata with updated version
+                metadata = {
+                    "page_id": updated_page["id"],
+                    "title": updated_page["title"],
+                    "version": new_version,
+                    "space_key": space_key,
+                    "url": f"{self.config.url}/wiki/spaces/{space_key}/pages/{updated_page['id']}",
+                }
+
+                return Document(page_content=processed_markdown, metadata=metadata)
+
             return None
         except Exception as e:
             logger.error(f"Error updating Confluence page: {e}")
@@ -297,7 +330,7 @@ class ConfluenceFetcher:
         try:
             # Get current page content
             current_page = self.confluence.get_page_by_id(
-                page_id=page_id, expand="body.storage,version"
+                page_id=page_id, expand="body.storage,version,space"
             )
             if not current_page:
                 logger.error(f"Page {page_id} not found")
@@ -305,11 +338,10 @@ class ConfluenceFetcher:
 
             current_content = current_page["body"]["storage"]["value"]
             version = current_page["version"]["number"]
+            space_key = current_page.get("space", {}).get("key", "")
 
             # Update the specific section
-            from .content import ContentEditor
-
-            updated_content = ContentEditor.replace_section(
+            updated_content = self.content_editor.replace_section(
                 current_content, heading, new_content
             )
 
@@ -320,11 +352,32 @@ class ConfluenceFetcher:
                 body=updated_content,
                 representation="storage",
                 minor_edit=minor_edit,
-                version_number=version + 1,
+                version_number=version,
             )
 
             if updated_page and updated_page.get("id"):
-                return self.get_page_content(updated_page["id"])
+                # Process the content
+                content = (
+                    updated_page.get("body", {}).get("storage", {}).get("value", "")
+                )
+                processed_html, processed_markdown = self._process_html_content(
+                    content, space_key
+                )
+
+                # Get the new version number from the response
+                new_version = updated_page.get("version", {}).get("number", version + 1)
+
+                # Create metadata with updated version
+                metadata = {
+                    "page_id": updated_page["id"],
+                    "title": updated_page["title"],
+                    "version": new_version,
+                    "space_key": space_key,
+                    "url": f"{self.config.url}/wiki/spaces/{space_key}/pages/{updated_page['id']}",
+                }
+
+                return Document(page_content=processed_markdown, metadata=metadata)
+
             return None
 
         except Exception as e:
@@ -351,7 +404,7 @@ class ConfluenceFetcher:
         """
         try:
             current_page = self.confluence.get_page_by_id(
-                page_id=page_id, expand="body.storage,version"
+                page_id=page_id, expand="body.storage,version,space"
             )
             if not current_page:
                 logger.error(f"Page {page_id} not found")
@@ -359,10 +412,9 @@ class ConfluenceFetcher:
 
             current_content = current_page["body"]["storage"]["value"]
             version = current_page["version"]["number"]
+            space_key = current_page.get("space", {}).get("key", "")
 
-            from .content import ContentEditor
-
-            updated_content = ContentEditor.insert_after_heading(
+            updated_content = self.content_editor.insert_after_heading(
                 current_content, heading, new_content
             )
 
@@ -372,11 +424,32 @@ class ConfluenceFetcher:
                 body=updated_content,
                 representation="storage",
                 minor_edit=minor_edit,
-                version_number=version + 1,
+                version_number=version,
             )
 
             if updated_page and updated_page.get("id"):
-                return self.get_page_content(updated_page["id"])
+                # Process the content
+                content = (
+                    updated_page.get("body", {}).get("storage", {}).get("value", "")
+                )
+                processed_html, processed_markdown = self._process_html_content(
+                    content, space_key
+                )
+
+                # Get the new version number from the response
+                new_version = updated_page.get("version", {}).get("number", version + 1)
+
+                # Create metadata with updated version
+                metadata = {
+                    "page_id": updated_page["id"],
+                    "title": updated_page["title"],
+                    "version": new_version,
+                    "space_key": space_key,
+                    "url": f"{self.config.url}/wiki/spaces/{space_key}/pages/{updated_page['id']}",
+                }
+
+                return Document(page_content=processed_markdown, metadata=metadata)
+
             return None
 
         except Exception as e:
@@ -405,7 +478,7 @@ class ConfluenceFetcher:
         """
         try:
             current_page = self.confluence.get_page_by_id(
-                page_id=page_id, expand="body.storage,version"
+                page_id=page_id, expand="body.storage,version,space"
             )
             if not current_page:
                 logger.error(f"Page {page_id} not found")
@@ -413,16 +486,15 @@ class ConfluenceFetcher:
 
             current_content = current_page["body"]["storage"]["value"]
             version = current_page["version"]["number"]
+            space_key = current_page.get("space", {}).get("key", "")
 
-            from .content import ContentEditor
-
-            start, end = ContentEditor.find_section(current_content, heading)
+            start, end = self.content_editor.find_section(current_content, heading)
             if start == -1:
                 logger.error(f"Section with heading '{heading}' not found")
                 return None
 
             section_content = current_content[start:end]
-            updated_section = ContentEditor.append_to_list(
+            updated_section = self.content_editor.append_to_list(
                 section_content, list_marker, new_item
             )
             updated_content = (
@@ -435,11 +507,32 @@ class ConfluenceFetcher:
                 body=updated_content,
                 representation="storage",
                 minor_edit=minor_edit,
-                version_number=version + 1,
+                version_number=version,
             )
 
             if updated_page and updated_page.get("id"):
-                return self.get_page_content(updated_page["id"])
+                # Process the content
+                content = (
+                    updated_page.get("body", {}).get("storage", {}).get("value", "")
+                )
+                processed_html, processed_markdown = self._process_html_content(
+                    content, space_key
+                )
+
+                # Get the new version number from the response
+                new_version = updated_page.get("version", {}).get("number", version + 1)
+
+                # Create metadata with updated version
+                metadata = {
+                    "page_id": updated_page["id"],
+                    "title": updated_page["title"],
+                    "version": new_version,
+                    "space_key": space_key,
+                    "url": f"{self.config.url}/wiki/spaces/{space_key}/pages/{updated_page['id']}",
+                }
+
+                return Document(page_content=processed_markdown, metadata=metadata)
+
             return None
 
         except Exception as e:
@@ -470,7 +563,7 @@ class ConfluenceFetcher:
         """
         try:
             current_page = self.confluence.get_page_by_id(
-                page_id=page_id, expand="body.storage,version"
+                page_id=page_id, expand="body.storage,version,space"
             )
             if not current_page:
                 logger.error(f"Page {page_id} not found")
@@ -478,16 +571,15 @@ class ConfluenceFetcher:
 
             current_content = current_page["body"]["storage"]["value"]
             version = current_page["version"]["number"]
+            space_key = current_page.get("space", {}).get("key", "")
 
-            from .content import ContentEditor
-
-            start, end = ContentEditor.find_section(current_content, heading)
+            start, end = self.content_editor.find_section(current_content, heading)
             if start == -1:
                 logger.error(f"Section with heading '{heading}' not found")
                 return None
 
             section_content = current_content[start:end]
-            updated_section = ContentEditor.update_table_row(
+            updated_section = self.content_editor.update_table_row(
                 section_content, table_start, row_identifier, new_values
             )
             updated_content = (
@@ -500,11 +592,32 @@ class ConfluenceFetcher:
                 body=updated_content,
                 representation="storage",
                 minor_edit=minor_edit,
-                version_number=version + 1,
+                version_number=version,
             )
 
             if updated_page and updated_page.get("id"):
-                return self.get_page_content(updated_page["id"])
+                # Process the content
+                content = (
+                    updated_page.get("body", {}).get("storage", {}).get("value", "")
+                )
+                processed_html, processed_markdown = self._process_html_content(
+                    content, space_key
+                )
+
+                # Get the new version number from the response
+                new_version = updated_page.get("version", {}).get("number", version + 1)
+
+                # Create metadata with updated version
+                metadata = {
+                    "page_id": updated_page["id"],
+                    "title": updated_page["title"],
+                    "version": new_version,
+                    "space_key": space_key,
+                    "url": f"{self.config.url}/wiki/spaces/{space_key}/pages/{updated_page['id']}",
+                }
+
+                return Document(page_content=processed_markdown, metadata=metadata)
+
             return None
 
         except Exception as e:
@@ -544,7 +657,7 @@ class ConfluenceFetcher:
             Attachment content as bytes if successful, None otherwise
         """
         try:
-            return self.confluence.get_attachment_by_id(attachment_id, expand="content")
+            return self.confluence.get_attachment_content(attachment_id)
         except Exception as e:
             logger.error(f"Error getting attachment content: {e}")
             return None
@@ -584,6 +697,10 @@ class ConfluenceFetcher:
             if not AttachmentHandler.validate_file(file):
                 return None
 
+            # Get space key for the page
+            page = self.confluence.get_page_by_id(page_id, expand="space")
+            space_key = page.get("space", {}).get("key", "")
+
             # Open file if needed
             with AttachmentHandler.open_file(file) as f:
                 # Upload attachment
@@ -591,13 +708,13 @@ class ConfluenceFetcher:
                     content=f, name=filename, content_type=content_type, page_id=page_id
                 )
 
-                if result and "id" in result:
-                    # Get space key for the page
-                    page = self.confluence.get_page_by_id(page_id, expand="space")
-                    space_key = page.get("space", {}).get("key", "")
-
+                # Handle both list and single object responses
+                if result:
+                    attachment_data = result[0] if isinstance(result, list) else result
+                    # Add container info to attachment data
+                    attachment_data["container"] = {"key": space_key}
                     return AttachmentHandler.format_attachment_info(
-                        result, self.config.url, space_key
+                        attachment_data, self.config.url, space_key
                     )
 
             return None

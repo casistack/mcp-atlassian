@@ -249,72 +249,57 @@ Comments:
 
         Args:
             issue_key: The issue key to update
-            summary: Optional new summary/title
+            summary: Optional new summary
             description: Optional new description
-            status: Optional new status (must be a valid transition)
-            priority: Optional new priority level
-            assignee: Optional username to assign the issue to
-            labels: Optional list of labels
-            custom_fields: Optional dictionary of custom field values
+            status: Optional new status
+            priority: Optional new priority
+            assignee: Optional new assignee
+            labels: Optional new labels
+            custom_fields: Optional custom fields to update
 
         Returns:
-            Updated Document object if successful, None otherwise
+            Document object if update successful, None otherwise
         """
         try:
             # Prepare the update fields
             fields = {}
-
-            if summary:
+            if summary is not None:
                 fields["summary"] = summary
-            if description:
+            if description is not None:
                 fields["description"] = description
-            if priority:
+            if priority is not None:
                 fields["priority"] = {"name": priority}
-            if assignee:
+            if assignee is not None:
                 fields["assignee"] = {"name": assignee}
-            if labels:
+            if labels is not None:
                 fields["labels"] = labels
             if custom_fields:
                 fields.update(custom_fields)
 
-            # Update the issue fields if there are any
-            if fields:
-                self.jira.update_issue_field(issue_key, fields)
+            # Update the issue
+            self.jira.issue_update(issue_key, fields=fields)
 
-            # Handle status transition if requested
-            if status:
-                try:
-                    self.jira.set_issue_status(issue_key, status)
-                except Exception as e:
-                    logger.error(f"Error updating issue status: {e}")
-                    # Continue with the update even if status transition fails
-                    pass
-
-            # Return the updated issue
+            # Return the updated issue as a Document
             return self.get_issue(issue_key)
 
         except Exception as e:
-            logger.error(f"Error updating Jira issue: {e}")
+            logger.error(f"Error updating Jira issue {issue_key}: {e}")
             return None
 
-    def get_issue_transitions(self, issue_key: str) -> list[dict]:
-        """Get available status transitions for an issue.
+    def get_issue_transitions(self, issue_key: str) -> dict:
+        """Get available transitions for an issue.
 
         Args:
             issue_key: The issue key to get transitions for
 
         Returns:
-            List of available transitions with their IDs and names
+            Dictionary containing available transitions
         """
         try:
-            transitions = self.jira.get_issue_transitions(issue_key)
-            return [
-                {"id": t["id"], "name": t["name"], "to_status": t["to"]["name"]}
-                for t in transitions
-            ]
+            return self.jira.get_issue_transitions(issue_key)
         except Exception as e:
             logger.error(f"Error getting issue transitions: {e}")
-            return []
+            return {"transitions": []}
 
     def update_issue_section(
         self,

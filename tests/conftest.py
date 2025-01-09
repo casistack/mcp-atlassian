@@ -5,9 +5,9 @@ from unittest.mock import MagicMock, patch
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Add tests directory to Python path
-tests_dir = Path(__file__).parent
-sys.path.insert(0, str(tests_dir))
+# Add src directory to Python path
+src_dir = Path(__file__).parent.parent / "src"
+sys.path.insert(0, str(src_dir))
 
 # Set testing mode
 os.environ["TESTING"] = "true"
@@ -17,10 +17,9 @@ test_env_path = Path(__file__).parent / ".env.test"
 load_dotenv(test_env_path)
 
 # Mock the server module
-with patch.dict("sys.modules", {"mcp_atlassian.server": MagicMock()}):
-    from mcp_atlassian.confluence import ConfluenceFetcher
-    from mcp_atlassian.jira import JiraFetcher
-    from mcp_atlassian.search import UnifiedSearch
+server_mock = MagicMock()
+server_mock.tool = MagicMock()
+sys.modules["mcp_atlassian.server"] = server_mock
 
 
 @pytest.fixture(autouse=True)

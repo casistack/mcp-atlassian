@@ -181,7 +181,8 @@ class MarkupFormatter:
             indent_level: Number of spaces to indent
         """
         indent = "  " * indent_level
-        return "\n".join(f"{indent}{line}" for line in content.split("\n"))
+        indented_content = "\n".join(f"{indent}{line}" for line in content.split("\n"))
+        return f"{indent}{{details}}\n{indented_content}\n{indent}{{details}}\n\n"
 
     @staticmethod
     def highlight(text: str, color: str = "yellow") -> str:

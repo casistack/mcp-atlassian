@@ -288,7 +288,7 @@ requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.12.3" },
     { name = "httpx", specifier = ">=0.28.0" },
     { name = "markdownify", specifier = ">=0.11.6" },
-    { name = "mcp", specifier = ">=1.0.0" },
+    { name = "mcp", extras = ["cli"], specifier = ">=1.0.0" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
 ]
 

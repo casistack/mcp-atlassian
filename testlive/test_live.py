@@ -3,6 +3,7 @@ import os
 os.environ["TESTING"] = "1"
 
 import logging
+from datetime import datetime
 from dotenv import load_dotenv
 from mcp_atlassian.confluence import ConfluenceFetcher
 from mcp_atlassian.jira import JiraFetcher
@@ -108,8 +109,6 @@ def test_confluence():
             )
 
             # Add timestamp to ensure unique page title
-            from datetime import datetime
-
             timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
             page_title = f"MCP Test Page {timestamp}"
             page = confluence.create_page(
@@ -232,16 +231,148 @@ def test_jira():
         logger.error(f"Error testing Jira: {str(e)}", exc_info=True)
 
 
+def test_unified_search():
+    logger.info("\n=== Testing Unified Search ===")
+    try:
+        # Initialize unified search
+        from mcp_atlassian.search import UnifiedSearch
+
+        unified = UnifiedSearch(
+            confluence_fetcher=ConfluenceFetcher(), jira_fetcher=JiraFetcher()
+        )
+
+        # Test search across both platforms
+        logger.info("Testing unified search across platforms")
+        results = unified.search(
+            "test", platforms=["confluence"], limit=5
+        )  # Testing only Confluence for now
+
+        if results:
+            for result in results:
+                # Handle different result types
+                if hasattr(result, "metadata"):
+                    logger.info(
+                        f"- Found: {result.metadata.get('title', 'Untitled')} ({result.metadata.get('type', 'unknown')})"
+                    )
+                elif hasattr(result, "page_content"):
+                    logger.info(f"- Found content: {result.page_content[:100]}...")
+                else:
+                    logger.info(f"- Found result: {str(result)[:100]}...")
+        else:
+            logger.info("No search results found")
+
+    except Exception as e:
+        logger.error(f"Error testing unified search: {str(e)}", exc_info=True)
+
+
+def test_advanced_formatting():
+    logger.info("\n=== Testing Advanced Formatting ===")
+    try:
+        confluence = ConfluenceFetcher()
+
+        # Get first available space
+        spaces = confluence.get_spaces()
+        if not spaces.get("results"):
+            logger.error("No spaces available for testing")
+            return
+
+        space_key = spaces["results"][0]["key"]
+
+        # Create a page with advanced formatting
+        content = (
+            MarkupFormatter.heading("Advanced Formatting Test", level=1)
+            + MarkupFormatter.status("In Progress", color="blue")
+            + MarkupFormatter.panel(
+                "This is a test of advanced formatting features",
+                title="Overview",
+                panel_type="info",
+            )
+            + MarkupFormatter.table_of_contents()
+            + MarkupFormatter.heading("Tables", level=2)
+            + MarkupFormatter.table(
+                headers=["Column 1", "Column 2"],
+                rows=[["Value 1", "Value 2"], ["Value 3", "Value 4"]],
+            )
+            + MarkupFormatter.heading("Lists", level=2)
+            + MarkupFormatter.bullet_list(
+                ["Item 1", ["Subitem 1.1", "Subitem 1.2"], "Item 2"]
+            )
+            + MarkupFormatter.heading("Code", level=2)
+            + MarkupFormatter.code_block("print('Hello, World!')", language="python")
+        )
+
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        page_title = f"Advanced Formatting Test {timestamp}"
+
+        page = confluence.create_page(
+            space_key=space_key, title=page_title, body=content
+        )
+
+        if page:
+            logger.info(
+                f"Created page with advanced formatting: {page.metadata['url']}"
+            )
+
+    except Exception as e:
+        logger.error(f"Error testing advanced formatting: {str(e)}", exc_info=True)
+
+
+def test_template_handling():
+    logger.info("\n=== Testing Template Handling ===")
+    try:
+        # Get available Confluence blueprints
+        confluence = ConfluenceFetcher()
+
+        # List available spaces first
+        spaces = confluence.get_spaces()
+        if spaces.get("results"):
+            space_key = spaces["results"][0]["key"]
+            logger.info(f"\nTesting in space: {space_key}")
+
+            # Get available blueprints
+            blueprints = confluence.confluence.get_blueprint_templates(space_key)
+
+            if blueprints:
+                logger.info("Available Confluence blueprints:")
+                for blueprint in blueprints:
+                    logger.info(
+                        f"- {blueprint.get('name', 'Unnamed')} ({blueprint.get('templateId', 'No ID')})"
+                    )
+            else:
+                logger.info("No Confluence blueprints found")
+
+        # Get available Jira issue types
+        jira = JiraFetcher()
+
+        # Get all issue types using the correct method
+        issue_types = jira.jira.get_issue_types()
+
+        if issue_types:
+            logger.info("\nAvailable Jira issue types:")
+            for issue_type in issue_types:
+                logger.info(
+                    f"- {issue_type.get('name', 'Unnamed')} ({issue_type.get('id', 'No ID')})"
+                )
+        else:
+            logger.info("No issue types found")
+
+    except Exception as e:
+        logger.error(f"Error testing template handling: {str(e)}", exc_info=True)
+
+
 if __name__ == "__main__":
     # First validate credentials
     if validate_credentials():
         logger.info("Credentials validated successfully. Starting tests...")
 
-        # Test Confluence integration
+        # Run original tests
         test_confluence()
-
-        # Test Jira integration
         test_jira()
+
+        # Run new feature tests
+        test_unified_search()
+        test_advanced_formatting()
+        test_template_handling()
     else:
         logger.error(
             "Credential validation failed. Please check your .env file and API tokens."

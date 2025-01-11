@@ -797,3 +797,19 @@ class ConfluenceFetcher:
         except Exception as e:
             logger.error(f"Error deleting attachment: {e}")
             return False
+
+    def delete_page(self, page_id: str) -> bool:
+        """Delete a Confluence page.
+
+        Args:
+            page_id: The ID of the page to delete
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            self.confluence.remove_page(page_id=page_id)
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting page: {e}")
+            return False

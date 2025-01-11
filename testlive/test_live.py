@@ -166,6 +166,13 @@ def test_confluence():
                 os.remove("test_attachment.txt")
                 logger.info("Test attachment cleaned up")
 
+                # Delete the test page
+                logger.info("Deleting test page")
+                if confluence.delete_page(page.metadata["page_id"]):
+                    logger.info("Test page deleted successfully")
+                else:
+                    logger.error("Failed to delete test page")
+
     except Exception as e:
         logger.error(f"Error testing Confluence: {str(e)}", exc_info=True)
 

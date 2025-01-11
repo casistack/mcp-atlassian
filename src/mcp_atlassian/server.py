@@ -1325,6 +1325,27 @@ async def delete_confluence_attachment(attachment_id: str) -> dict[str, Any]:
 
 
 @app.tool()
+async def delete_confluence_page(page_id: str) -> dict[str, Any]:
+    """Delete a Confluence page.
+
+    Args:
+        page_id: The ID of the page to delete
+
+    Returns:
+        Dictionary indicating success or failure
+    """
+    try:
+        success = confluence_fetcher.delete_page(page_id)
+        return {
+            "success": success,
+            "error": None if success else "Failed to delete page",
+        }
+    except Exception as e:
+        logger.error(f"Error deleting Confluence page: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@app.tool()
 async def get_jira_attachments(issue_key: str) -> dict[str, Any]:
     """Get all attachments for a Jira issue.
 

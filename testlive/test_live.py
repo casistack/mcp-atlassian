@@ -112,7 +112,10 @@ def test_confluence():
             timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
             page_title = f"MCP Test Page {timestamp}"
             page = confluence.create_page(
-                space_key=space_key, title=page_title, body=content
+                space_key=space_key,
+                title=page_title,
+                body=content,
+                representation="wiki",
             )
 
             if page:
@@ -136,7 +139,7 @@ def test_confluence():
                     title=page_title,
                     body=updated_content,
                     type="page",
-                    representation="storage",
+                    representation="wiki",
                     minor_edit=True,
                 )
 
@@ -312,7 +315,7 @@ def test_advanced_formatting():
         page_title = f"Advanced Formatting Test {timestamp}"
 
         page = confluence.create_page(
-            space_key=space_key, title=page_title, body=content
+            space_key=space_key, title=page_title, body=content, representation="wiki"
         )
 
         if page:

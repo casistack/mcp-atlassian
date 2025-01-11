@@ -38,6 +38,8 @@ def cleanup_test_pages():
             test_pages = confluence.search(
                 f'space = "{space_key}" AND ('
                 'title ~ "MCP Test Page" OR '
+                'title ~ "Blueprint Test" OR '
+                'title ~ "Advanced Content Test" OR '
                 'title ~ "Advanced Formatting Test" OR '
                 'title ~ "Test Page" OR '
                 'title ~ "Formatting Test" OR '

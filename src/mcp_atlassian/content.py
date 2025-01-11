@@ -1,5 +1,6 @@
-from typing import List, Optional, Tuple
+from typing import Dict, List, Any, Tuple, Optional
 import logging
+from bs4 import BeautifulSoup
 
 # Configure logging
 logger = logging.getLogger("mcp-atlassian")
@@ -65,13 +66,7 @@ class MarkupFormatter:
     def panel(
         content: str, title: Optional[str] = None, panel_type: str = "info"
     ) -> str:
-        """Create a panel (info, note, warning, success, error).
-
-        Args:
-            content: The panel content
-            title: Optional panel title
-            panel_type: Panel type (info, note, warning, success, error)
-        """
+        """Create a panel (info, note, warning, success, error)."""
         valid_types = {"info", "note", "warning", "success", "error"}
         if panel_type not in valid_types:
             raise ValueError(f"Panel type must be one of: {', '.join(valid_types)}")
@@ -86,419 +81,650 @@ class MarkupFormatter:
 
     @staticmethod
     def status(text: str, color: str = "green") -> str:
-        """Create a status macro.
-
-        Args:
-            text: The status text
-            color: Status color (grey, red, yellow, green, blue)
-        """
+        """Create a status macro."""
         valid_colors = {"grey", "red", "yellow", "green", "blue"}
         if color not in valid_colors:
             raise ValueError(f"Color must be one of: {', '.join(valid_colors)}")
 
         return f"{{status:colour={color}|title={text}}}\n\n"
 
-    @staticmethod
-    def expand(summary: str, content: str) -> str:
-        """Create an expandable section.
-
-        Args:
-            summary: Text shown when collapsed
-            content: Content shown when expanded
-        """
-        return f"{{expand:summary={summary}}}\n{content}\n{{expand}}\n\n"
-
-    @staticmethod
-    def code_inline(code: str) -> str:
-        """Create inline code formatting."""
-        return f"{{{{code}}}}{code}{{{{code}}}}"
-
-    @staticmethod
-    def table_of_contents(min_level: int = 1, max_level: int = 6) -> str:
-        """Create a table of contents macro.
-
-        Args:
-            min_level: Minimum heading level to include
-            max_level: Maximum heading level to include
-        """
-        return f"{{toc:minLevel={min_level}|maxLevel={max_level}}}\n\n"
-
-    @staticmethod
-    def info_macro(title: str, content: str) -> str:
-        """Create an info macro."""
-        return f"{{info:title={title}}}\n{content}\n{{info}}\n\n"
-
-    @staticmethod
-    def note_macro(title: str, content: str) -> str:
-        """Create a note macro."""
-        return f"{{note:title={title}}}\n{content}\n{{note}}\n\n"
-
-    @staticmethod
-    def warning_macro(title: str, content: str) -> str:
-        """Create a warning macro."""
-        return f"{{warning:title={title}}}\n{content}\n{{warning}}\n\n"
-
-    @staticmethod
-    def tip_macro(title: str, content: str) -> str:
-        """Create a tip macro."""
-        return f"{{tip:title={title}}}\n{content}\n{{tip}}\n\n"
-
-    @staticmethod
-    def task_list(items: list[tuple[bool, str]]) -> str:
-        """Create a task list with checkboxes.
-
-        Args:
-            items: List of (is_checked, task_text) tuples
-        """
-        return "".join(
-            f"- [{'x' if checked else ' '}] {task}\n" for checked, task in items
-        )
-
-    @staticmethod
-    def column_layout(columns: list[str], widths: Optional[list[str]] = None) -> str:
-        """Create a multi-column layout.
-
-        Args:
-            columns: List of column contents
-            widths: Optional list of column widths (e.g., ["50%", "50%"])
-        """
-        if widths and len(widths) != len(columns):
-            raise ValueError("Number of widths must match number of columns")
-
-        result = ""
-        for i, content in enumerate(columns):
-            width_str = f":width={widths[i]}" if widths and widths[i] else ""
-            result += f"{{column{width_str}}}\n{content}\n{{column}}\n"
-
-        return f"{{section:border=true}}\n{result}{{section}}\n\n"
-
-    @staticmethod
-    def details(content: str, indent_level: int = 0) -> str:
-        """Add indentation and section details.
-
-        Args:
-            content: The content to format
-            indent_level: Number of spaces to indent
-        """
-        indent = "  " * indent_level
-        indented_content = "\n".join(f"{indent}{line}" for line in content.split("\n"))
-        return f"{indent}{{details}}\n{indented_content}\n{indent}{{details}}\n\n"
-
-    @staticmethod
-    def highlight(text: str, color: str = "yellow") -> str:
-        """Highlight text with a background color.
-
-        Args:
-            text: Text to highlight
-            color: Background color (yellow, red, green, blue)
-        """
-        valid_colors = {"yellow", "red", "green", "blue"}
-        if color not in valid_colors:
-            raise ValueError(f"Color must be one of: {', '.join(valid_colors)}")
-
-        return f"{{color:{color}}}{text}{{color}}"
-
-    @staticmethod
-    def divider() -> str:
-        """Add a horizontal divider line."""
-        return "----\n\n"
-
 
 class ContentEditor:
-    """Utility class for manipulating Confluence and Jira content."""
+    """High-level interface for AI to edit Confluence content."""
 
-    @staticmethod
-    def find_section(content: str, heading: str) -> Tuple[int, int]:
-        """Find the start and end positions of a section by its heading."""
-        heading_marker = f"h1. {heading}\n"
-        start = content.find(heading_marker)
-        if start == -1:
-            return -1, -1
+    def __init__(self):
+        """Initialize the content editor."""
+        self.confluence = None
 
-        start += len(heading_marker)
-        next_heading = content.find("\nh1. ", start)
-        end = next_heading if next_heading != -1 else len(content)
+    def _ensure_confluence(self, space_key: str):
+        """Ensure we have a Confluence connection."""
+        if not self.confluence:
+            from .confluence import ConfluenceFetcher
 
-        return start, end
+            self.confluence = ConfluenceFetcher()
 
-    @staticmethod
-    def insert_after_heading(content: str, heading: str, new_content: str) -> str:
-        """Insert content after a specific heading."""
-        start, end = ContentEditor.find_section(content, heading)
-        if start == -1:
-            return content
+    def _get_page(self, page_title: str, space_key: str) -> Dict[str, Any]:
+        """Get a page by title and space key."""
+        self._ensure_confluence(space_key)
+        page = self.confluence.get_page_by_title(space_key, page_title)
+        if not page:
+            raise ValueError(f"Page '{page_title}' not found in space '{space_key}'")
+        return page
 
-        section_content = content[start:end].strip()
-        return (
-            f"{content[:start]}{section_content}\n\n" f"{new_content}\n{content[end:]}"
+    def _get_section_content(self, content: str, section: str) -> Tuple[str, int]:
+        """Find a section in the content and return its content and position."""
+        soup = BeautifulSoup(content, "html.parser")
+        headers = soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"])
+
+        for i, header in enumerate(headers):
+            if header.get_text().strip() == section:
+                next_header = headers[i + 1] if i + 1 < len(headers) else None
+                section_content = ""
+                current = header
+
+                while current and (not next_header or current != next_header):
+                    section_content += str(current)
+                    current = current.next_sibling
+
+                return section_content, i
+
+        # If section not found, create it
+        last_header = headers[-1] if headers else None
+        if last_header:
+            return str(last_header), len(headers)
+
+        # If no headers exist, return empty content
+        return "", 0
+
+    def update_page(
+        self,
+        page_id: str,
+        title: str,
+        body: str,
+        representation: str = "storage",
+        minor_edit: bool = False,
+    ) -> None:
+        """Update a page with new content."""
+        self.confluence.confluence.update_page(
+            page_id=page_id,
+            title=title,
+            body=body,
+            type="page",
+            representation=representation,
+            minor_edit=minor_edit,
+            full_width=False,
         )
 
-    @staticmethod
-    def replace_section(content: str, heading: str, new_content: str) -> str:
-        """Replace content of a section identified by its heading."""
-        start, end = ContentEditor.find_section(content, heading)
-        if start == -1:
-            return content
+    def add_list_item(
+        self,
+        page_title: str,
+        space_key: str,
+        section: str,
+        item: str,
+        item_type: str = "bullet",
+    ) -> None:
+        """Add an item to a list in a specific section."""
+        page = self._get_page(page_title, space_key)
+        content = page.metadata["content"]
 
-        return f"{content[:start]}{new_content}\n{content[end:]}"
+        section_content, pos = self._get_section_content(content, section)
 
-    @staticmethod
-    def append_to_list(content: str, list_marker: str, new_item: str) -> str:
-        """Append an item to an existing list."""
-        lines = content.split("\n")
-        list_end = -1
+        # Create new list item in appropriate format
+        new_item = f"<li>{item}</li>"
 
-        for i, line in enumerate(lines):
-            if line.strip().startswith(list_marker):
-                list_end = i
-                while list_end + 1 < len(lines) and lines[
-                    list_end + 1
-                ].strip().startswith(list_marker):
-                    list_end += 1
+        # Find existing list or create new one
+        if "<ul>" in section_content:
+            new_content = section_content.replace("</ul>", f"{new_item}</ul>")
+        else:
+            new_content = f"{section_content}<ul>{new_item}</ul>"
 
-        if list_end != -1:
-            indent = len(lines[list_end]) - len(lines[list_end].lstrip())
-            lines.insert(list_end + 1, " " * indent + f"{list_marker} {new_item}")
+        # Update the page
+        self.confluence.update_page(
+            page_id=page.metadata["page_id"],
+            title=page_title,
+            body=content.replace(section_content, new_content),
+            representation="storage",
+        )
 
-        return "\n".join(lines)
+    def update_status(
+        self, page_title: str, space_key: str, status: str, color: str = "green"
+    ) -> None:
+        """Update the status macro on the page."""
+        page = self._get_page(page_title, space_key)
+        current_page = self.confluence.confluence.get_page_by_id(
+            page_id=page.metadata["page_id"], expand="body.storage,version"
+        )
+        content = current_page["body"]["storage"]["value"]
 
-    @staticmethod
-    def update_table_row(
-        content: str, table_start: str, row_identifier: str, new_values: list[str]
-    ) -> str:
-        """Update a specific row in a table.
+        # Create new status macro
+        new_status = f"""
+<ac:structured-macro ac:name="status">
+    <ac:parameter ac:name="colour">{color}</ac:parameter>
+    <ac:parameter ac:name="title">{status}</ac:parameter>
+</ac:structured-macro>
+"""
+
+        # Find and replace existing status or add new one
+        soup = BeautifulSoup(content, "html.parser")
+        existing_status = soup.find("ac:structured-macro", {"ac:name": "status"})
+
+        if existing_status:
+            existing_status.replace_with(BeautifulSoup(new_status, "html.parser"))
+        else:
+            # Add after first heading
+            first_heading = soup.find(["h1", "h2", "h3", "h4", "h5", "h6"])
+            if first_heading:
+                first_heading.insert_after(BeautifulSoup(new_status, "html.parser"))
+
+        # Update the page
+        self.update_page(
+            page_id=page.metadata["page_id"],
+            title=page_title,
+            body=str(soup),
+            representation="storage",
+            minor_edit=True,
+        )
+
+    def add_section(
+        self,
+        page_title: str,
+        space_key: str,
+        section_title: str,
+        content: List[Dict[str, Any]],
+    ) -> None:
+        """Add a new section to the page."""
+        page = self._get_page(page_title, space_key)
+        current_page = self.confluence.confluence.get_page_by_id(
+            page_id=page.metadata["page_id"], expand="body.storage,version"
+        )
+        page_content = current_page["body"]["storage"]["value"]
+
+        # Create the new section in storage format
+        new_section = f"<h2>{section_title}</h2>\n\n"
+
+        for item in content:
+            if item["type"] == "text":
+                new_section += f"<p>{item['content']}</p>\n\n"
+            elif item["type"] == "list":
+                list_tag = "ol" if item["style"] == "numbered" else "ul"
+                new_section += f"<{list_tag}>\n"
+                for list_item in item["items"]:
+                    new_section += f"<li>{list_item}</li>\n"
+                new_section += f"</{list_tag}>\n\n"
+            elif item["type"] == "note":
+                new_section += f"""
+<ac:structured-macro ac:name="note">
+    <ac:rich-text-body>
+        <p>{item['content']}</p>
+    </ac:rich-text-body>
+</ac:structured-macro>\n\n"""
+            elif item["type"] == "table":
+                new_section += "<table><tbody>\n"
+                # Add headers
+                new_section += "<tr>\n"
+                for header in item["headers"]:
+                    new_section += f"<th>{header}</th>\n"
+                new_section += "</tr>\n"
+                # Add rows
+                for row in item["rows"]:
+                    new_section += "<tr>\n"
+                    for cell in row:
+                        new_section += f"<td>{cell}</td>\n"
+                    new_section += "</tr>\n"
+                new_section += "</tbody></table>\n\n"
+            elif item["type"] == "panel":
+                new_section += f"""
+<ac:structured-macro ac:name="panel">
+    <ac:parameter ac:name="title">{item.get("title", "")}</ac:parameter>
+    <ac:parameter ac:name="type">{item.get("panel_type", "info")}</ac:parameter>
+    <ac:rich-text-body>
+        <p>{item['content']}</p>
+    </ac:rich-text-body>
+</ac:structured-macro>\n\n"""
+
+        # Append the new section
+        new_content = page_content + new_section
+
+        # Update the page
+        self.update_page(
+            page_id=page.metadata["page_id"],
+            title=page_title,
+            body=new_content,
+            representation="storage",
+            minor_edit=True,
+        )
+
+    def add_code_block(
+        self,
+        page_title: str,
+        space_key: str,
+        section: str,
+        code: str,
+        language: str,
+        title: Optional[str] = None,
+    ) -> None:
+        """Add a code block to a specific section."""
+        page = self._get_page(page_title, space_key)
+        current_page = self.confluence.confluence.get_page_by_id(
+            page_id=page.metadata["page_id"], expand="body.storage,version"
+        )
+        content = current_page["body"]["storage"]["value"]
+
+        section_content, pos = self._get_section_content(content, section)
+
+        # Create code macro
+        code_macro = f"""
+<ac:structured-macro ac:name="code">
+    <ac:parameter ac:name="language">{language}</ac:parameter>
+    {f'<ac:parameter ac:name="title">{title}</ac:parameter>' if title else ''}
+    <ac:plain-text-body><![CDATA[{code}]]></ac:plain-text-body>
+</ac:structured-macro>
+"""
+
+        # Add to section
+        new_content = content.replace(section_content, section_content + code_macro)
+
+        # Update the page
+        self.update_page(
+            page_id=page.metadata["page_id"],
+            title=page_title,
+            body=new_content,
+            representation="storage",
+            minor_edit=True,
+        )
+
+    def update_table(
+        self,
+        page_title: str,
+        space_key: str,
+        section: str,
+        row_identifier: str,
+        new_values: Dict[str, str],
+    ) -> None:
+        """Update a specific row in a table."""
+        page = self._get_page(page_title, space_key)
+        content = page.metadata["content"]
+
+        section_content, pos = self._get_section_content(content, section)
+
+        # Parse the table
+        soup = BeautifulSoup(section_content, "html.parser")
+        table = soup.find("table")
+        if not table:
+            raise ValueError(f"No table found in section '{section}'")
+
+        # Get headers
+        headers = []
+        header_row = table.find("tr")
+        if header_row:
+            headers = [
+                th.get_text().strip() for th in header_row.find_all(["th", "td"])
+            ]
+
+        # Find and update the target row
+        for row in table.find_all("tr")[1:]:  # Skip header row
+            cells = row.find_all("td")
+            if cells and cells[0].get_text().strip() == row_identifier:
+                for header, new_value in new_values.items():
+                    if header in headers:
+                        idx = headers.index(header)
+                        if idx < len(cells):
+                            cells[idx].string = new_value
+
+        # Update the page
+        self.confluence.update_page(
+            page_id=page.metadata["page_id"],
+            title=page_title,
+            body=content.replace(section_content, str(soup)),
+            representation="storage",
+        )
+
+    def add_panel(
+        self,
+        page_title: str,
+        space_key: str,
+        section: str,
+        content: str,
+        panel_type: str = "info",
+        title: Optional[str] = None,
+    ) -> None:
+        """Add a panel to a specific section."""
+        page = self._get_page(page_title, space_key)
+        current_page = self.confluence.confluence.get_page_by_id(
+            page_id=page.metadata["page_id"], expand="body.storage,version"
+        )
+        page_content = current_page["body"]["storage"]["value"]
+
+        section_content, pos = self._get_section_content(page_content, section)
+
+        # Create panel macro
+        panel_macro = f"""
+<ac:structured-macro ac:name="panel">
+    <ac:parameter ac:name="type">{panel_type}</ac:parameter>
+    {f'<ac:parameter ac:name="title">{title}</ac:parameter>' if title else ''}
+    <ac:rich-text-body>
+        <p>{content}</p>
+    </ac:rich-text-body>
+</ac:structured-macro>
+"""
+
+        # Add to section
+        new_content = page_content.replace(
+            section_content, section_content + panel_macro
+        )
+
+        # Update the page
+        self.update_page(
+            page_id=page.metadata["page_id"],
+            title=page_title,
+            body=new_content,
+            representation="storage",
+            minor_edit=True,
+        )
+
+    def create_page(
+        self, space_key: str, title: str, content: List[Dict[str, Any]]
+    ) -> None:
+        """Create a new page with structured content.
 
         Args:
-            content: The content containing the table
-            table_start: Text that uniquely identifies the table header
-            row_identifier: Text that uniquely identifies the row to update
-            new_values: New values for the row cells
-
-        Returns:
-            Updated content with the modified table row
+            space_key: The space key where to create the page
+            title: The title of the new page
+            content: List of content blocks to add to the page
         """
-        lines = content.split("\n")
-        table_start_idx = -1
-        row_idx = -1
+        self._ensure_confluence(space_key)
 
-        # Find the table and row
-        for i, line in enumerate(lines):
-            if table_start in line:
-                table_start_idx = i
-                # Count columns in header
-                header_cols = line.count("||") - 1
-                # Validate column count
-                if len(new_values) != header_cols:
-                    return content  # Return unchanged if column counts don't match
-            elif table_start_idx != -1 and row_identifier in line:
-                row_idx = i
-                break
+        # Build the page content in storage format
+        page_content = ""
 
-        if row_idx != -1:
-            lines[row_idx] = "|" + "|".join(new_values) + "|"
+        for item in content:
+            if item["type"] == "status":
+                page_content += f"""
+<ac:structured-macro ac:name="status">
+    <ac:parameter ac:name="colour">{item["color"]}</ac:parameter>
+    <ac:parameter ac:name="title">{item["text"]}</ac:parameter>
+</ac:structured-macro>\n"""
 
-        return "\n".join(lines)
+            elif item["type"] == "panel":
+                page_content += f"""
+<ac:structured-macro ac:name="panel">
+    <ac:parameter ac:name="title">{item.get("title", "")}</ac:parameter>
+    <ac:parameter ac:name="type">{item.get("panel_type", "info")}</ac:parameter>
+    <ac:rich-text-body>
+        <p>{item["content"]}</p>
+    </ac:rich-text-body>
+</ac:structured-macro>\n"""
+
+            elif item["type"] == "text":
+                page_content += f"<p>{item['content']}</p>\n\n"
+
+            elif item["type"] == "toc":
+                page_content += f"""
+<ac:structured-macro ac:name="toc">
+    <ac:parameter ac:name="minLevel">{item.get("min_level", 1)}</ac:parameter>
+    <ac:parameter ac:name="maxLevel">{item.get("max_level", 7)}</ac:parameter>
+</ac:structured-macro>\n"""
+
+        # Create the page using the correct parameters
+        return self.confluence.confluence.create_page(
+            space=space_key,
+            title=title,
+            body=page_content,
+            representation="storage",
+            editor="v2",
+        )
+
+    def format_text(self, text: str, formatting: List[str]) -> str:
+        """Apply formatting to text.
+
+        Args:
+            text: The text to format
+            formatting: List of formats to apply ('bold', 'italic', 'underline', 'strike', 'superscript', 'subscript')
+        """
+        formatted = text
+        for fmt in formatting:
+            if fmt == "bold":
+                formatted = f"<strong>{formatted}</strong>"
+            elif fmt == "italic":
+                formatted = f"<em>{formatted}</em>"
+            elif fmt == "underline":
+                formatted = f"<u>{formatted}</u>"
+            elif fmt == "strike":
+                formatted = f"<strike>{formatted}</strike>"
+            elif fmt == "superscript":
+                formatted = f"<sup>{formatted}</sup>"
+            elif fmt == "subscript":
+                formatted = f"<sub>{formatted}</sub>"
+        return formatted
+
+    def add_link(
+        self,
+        page_title: str,
+        space_key: str,
+        section: str,
+        link_text: str,
+        url: str,
+        link_type: str = "external",
+    ) -> None:
+        """Add a link to a specific section.
+
+        Args:
+            link_type: Type of link ('external', 'page', 'anchor')
+        """
+        page = self._get_page(page_title, space_key)
+        current_page = self.confluence.confluence.get_page_by_id(
+            page_id=page.metadata["page_id"], expand="body.storage,version"
+        )
+        content = current_page["body"]["storage"]["value"]
+        section_content, pos = self._get_section_content(content, section)
+
+        if link_type == "external":
+            link = f'<a href="{url}">{link_text}</a>'
+        elif link_type == "page":
+            link = f'<ac:link><ri:page ri:content-title="{url}"/><ac:plain-text-link-body><![CDATA[{link_text}]]></ac:plain-text-link-body></ac:link>'
+        elif link_type == "anchor":
+            link = f'<ac:link ac:anchor="{url}"><ac:plain-text-link-body><![CDATA[{link_text}]]></ac:plain-text-link-body></ac:link>'
+
+        new_content = content.replace(section_content, section_content + link)
+
+        self.update_page(
+            page_id=page.metadata["page_id"],
+            title=page_title,
+            body=new_content,
+            representation="storage",
+            minor_edit=True,
+        )
+
+    def add_expandable_section(
+        self, page_title: str, space_key: str, section: str, title: str, content: str
+    ) -> None:
+        """Add an expandable section."""
+        page = self._get_page(page_title, space_key)
+        current_page = self.confluence.confluence.get_page_by_id(
+            page_id=page.metadata["page_id"], expand="body.storage,version"
+        )
+        page_content = current_page["body"]["storage"]["value"]
+        section_content, pos = self._get_section_content(page_content, section)
+
+        expand_macro = f"""
+<ac:structured-macro ac:name="expand">
+    <ac:parameter ac:name="title">{title}</ac:parameter>
+    <ac:rich-text-body>
+        <p>{content}</p>
+    </ac:rich-text-body>
+</ac:structured-macro>
+"""
+
+        new_content = page_content.replace(
+            section_content, section_content + expand_macro
+        )
+
+        self.update_page(
+            page_id=page.metadata["page_id"],
+            title=page_title,
+            body=new_content,
+            representation="storage",
+            minor_edit=True,
+        )
+
+    def move_section(
+        self,
+        page_title: str,
+        space_key: str,
+        section: str,
+        target_section: str,
+        position: str = "after",
+    ) -> None:
+        """Move a section relative to another section."""
+        page = self._get_page(page_title, space_key)
+        current_page = self.confluence.confluence.get_page_by_id(
+            page_id=page.metadata["page_id"], expand="body.storage,version"
+        )
+        content = current_page["body"]["storage"]["value"]
+
+        # Get source and target sections
+        source_content, source_pos = self._get_section_content(content, section)
+        target_content, target_pos = self._get_section_content(content, target_section)
+
+        # Remove source section
+        content_without_source = content.replace(source_content, "")
+
+        # Insert at target position
+        if position == "after":
+            new_content = content_without_source.replace(
+                target_content, target_content + source_content
+            )
+        else:  # before
+            new_content = content_without_source.replace(
+                target_content, source_content + target_content
+            )
+
+        self.update_page(
+            page_id=page.metadata["page_id"],
+            title=page_title,
+            body=new_content,
+            representation="storage",
+            minor_edit=True,
+        )
+
+    def add_table_of_contents(
+        self,
+        page_title: str,
+        space_key: str,
+        min_level: int = 1,
+        max_level: int = 7,
+        position: str = "top",
+    ) -> None:
+        """Add a table of contents to the page."""
+        page = self._get_page(page_title, space_key)
+        current_page = self.confluence.confluence.get_page_by_id(
+            page_id=page.metadata["page_id"], expand="body.storage,version"
+        )
+        content = current_page["body"]["storage"]["value"]
+
+        toc_macro = f"""
+<ac:structured-macro ac:name="toc">
+    <ac:parameter ac:name="minLevel">{min_level}</ac:parameter>
+    <ac:parameter ac:name="maxLevel">{max_level}</ac:parameter>
+</ac:structured-macro>
+"""
+
+        if position == "top":
+            new_content = toc_macro + content
+        else:
+            new_content = content + toc_macro
+
+        self.update_page(
+            page_id=page.metadata["page_id"],
+            title=page_title,
+            body=new_content,
+            representation="storage",
+            minor_edit=True,
+        )
 
 
 class TemplateHandler:
-    """Handles template operations for Confluence and Jira."""
+    """Handles Confluence templates and blueprints."""
 
-    @staticmethod
-    def get_confluence_templates(confluence_client) -> List[dict]:
-        """Get available Confluence templates.
+    def __init__(self):
+        """Initialize the template handler."""
+        self.confluence = None
 
-        Args:
-            confluence_client: Authenticated Confluence client
+    def _ensure_confluence(self, space_key: str):
+        """Ensure we have a Confluence connection."""
+        if not self.confluence:
+            from .confluence import ConfluenceFetcher
 
-        Returns:
-            List of template information dictionaries
-        """
-        try:
-            # Get blueprint templates
-            blueprint_templates = confluence_client.get_blueprint_templates()
+            self.confluence = ConfluenceFetcher()
 
-            # Get custom templates
-            custom_templates = confluence_client.get_content(
-                type="template", expand="body.storage,version,space"
-            )
+    def get_content_templates(
+        self, space_key: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """Get content templates for a space or global templates."""
+        self._ensure_confluence(space_key or "")
+        return self.confluence.confluence.get_content_templates(space_key)
 
-            templates = []
+    def get_blueprint_templates(
+        self, space_key: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """Get blueprint templates for a space or global blueprints."""
+        self._ensure_confluence(space_key or "")
+        return self.confluence.confluence.get_blueprint_templates(space_key)
 
-            # Process blueprint templates
-            for template in blueprint_templates.get("blueprints", []):
-                templates.append(
-                    {
-                        "id": template.get("templateId"),
-                        "name": template.get("name"),
-                        "description": template.get("description"),
-                        "type": "blueprint",
-                        "space_key": template.get("spaceKey"),
-                        "content": None,  # Content is loaded when template is used
-                    }
-                )
-
-            # Process custom templates
-            for template in custom_templates.get("results", []):
-                templates.append(
-                    {
-                        "id": template.get("id"),
-                        "name": template.get("title"),
-                        "description": template.get("description", ""),
-                        "type": "custom",
-                        "space_key": template.get("space", {}).get("key"),
-                        "content": template.get("body", {})
-                        .get("storage", {})
-                        .get("value"),
-                    }
-                )
-
-            return templates
-        except Exception as e:
-            logger.error(f"Error fetching Confluence templates: {e}")
-            return []
-
-    @staticmethod
-    def get_jira_templates(jira_client) -> List[dict]:
-        """Get available Jira issue templates.
-
-        Args:
-            jira_client: Authenticated Jira client
-
-        Returns:
-            List of template information dictionaries
-        """
-        try:
-            # Get project templates
-            templates = []
-
-            # Get issue type schemes to find templates
-            schemes = jira_client.issue_type_schemes()
-
-            for scheme in schemes:
-                project_templates = jira_client.issue_templates(scheme.get("id"))
-                for template in project_templates:
-                    templates.append(
-                        {
-                            "id": template.get("id"),
-                            "name": template.get("name"),
-                            "description": template.get("description", ""),
-                            "project_key": template.get("projectKey"),
-                            "issue_type": template.get("issueType", {}).get("name"),
-                            "fields": template.get("fields", {}),
-                        }
-                    )
-
-            return templates
-        except Exception as e:
-            logger.error(f"Error fetching Jira templates: {e}")
-            return []
-
-    @staticmethod
-    def apply_confluence_template(
-        confluence_client,
-        template_id: str,
+    def create_from_template(
+        self,
         space_key: str,
-        title: str,
-        template_parameters: Optional[dict] = None,
-    ) -> Optional[str]:
-        """Apply a Confluence template.
-
-        Args:
-            confluence_client: Authenticated Confluence client
-            template_id: ID of the template to use
-            space_key: Key of the space to create page in
-            title: Title for the new page
-            template_parameters: Optional parameters to fill in template
-
-        Returns:
-            Content of the new page based on template
-        """
-        try:
-            # Handle blueprint templates
-            if template_id.startswith("blueprint-"):
-                content = confluence_client.create_page_from_blueprint(
-                    space=space_key,
-                    title=title,
-                    blueprint_id=template_id,
-                    template_parameters=template_parameters or {},
-                )
-                return content.get("body", {}).get("storage", {}).get("value")
-
-            # Handle custom templates
-            else:
-                template = confluence_client.get_content_by_id(
-                    content_id=template_id, expand="body.storage"
-                )
-                content = template.get("body", {}).get("storage", {}).get("value", "")
-
-                # Replace template parameters if provided
-                if template_parameters:
-                    for key, value in template_parameters.items():
-                        content = content.replace(f"${{{key}}}", str(value))
-
-                return content
-
-        except Exception as e:
-            logger.error(f"Error applying Confluence template: {e}")
-            return None
-
-    @staticmethod
-    def apply_jira_template(
-        jira_client,
         template_id: str,
-        project_key: str,
-        summary: str,
-        template_parameters: Optional[dict] = None,
-    ) -> Optional[dict]:
-        """Apply a Jira issue template.
+        title: str,
+        template_parameters: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Create a page from a template."""
+        self._ensure_confluence(space_key)
 
-        Args:
-            jira_client: Authenticated Jira client
-            template_id: ID of the template to use
-            project_key: Key of the project to create issue in
-            summary: Issue summary
-            template_parameters: Optional parameters to fill in template
+        # Get the template
+        template = self.confluence.confluence.get_content_template(template_id)
+        if not template:
+            raise ValueError(f"Template {template_id} not found")
 
-        Returns:
-            Dictionary with template-based issue fields
-        """
-        try:
-            # Get template details
-            template = jira_client.issue_template(template_id)
+        # Prepare the content
+        content = template["body"]["storage"]["value"]
+        if template_parameters:
+            # Replace template parameters in content
+            for key, value in template_parameters.items():
+                content = content.replace(f"${key}$", str(value))
 
-            # Start with template fields
-            fields = template.get("fields", {}).copy()
+        # Create the page
+        return self.confluence.confluence.create_page(
+            space=space_key,
+            title=title,
+            body=content,
+            representation="storage",
+            editor="v2",
+        )
 
-            # Update with provided parameters
-            if template_parameters:
-                fields.update(template_parameters)
+    def create_or_update_template(
+        self,
+        name: str,
+        body: Dict[str, str],
+        template_type: str = "page",
+        template_id: Optional[str] = None,
+        description: Optional[str] = None,
+        labels: Optional[List[Dict[str, str]]] = None,
+        space: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Create or update a content template."""
+        self._ensure_confluence(space or "")
+        return self.confluence.confluence.create_or_update_template(
+            name=name,
+            body=body,
+            template_type=template_type,
+            template_id=template_id,
+            description=description,
+            labels=labels,
+            space=space,
+        )
 
-            # Ensure required fields
-            fields.update(
-                {
-                    "project": {"key": project_key},
-                    "summary": summary,
-                }
-            )
-
-            return fields
-
-        except Exception as e:
-            logger.error(f"Error applying Jira template: {e}")
-            return None
-
-    @staticmethod
-    def list_template_variables(content: str) -> List[str]:
-        """Extract template variables from content.
-
-        Args:
-            content: Template content
-
-        Returns:
-            List of variable names found in template
-        """
-        import re
-
-        # Match ${variable_name} pattern
-        pattern = r"\$\{([^}]+)\}"
-        return list(set(re.findall(pattern, content)))
+    def remove_template(self, template_id: str) -> None:
+        """Remove a template."""
+        self._ensure_confluence("")
+        self.confluence.confluence.remove_template(template_id)

@@ -1,21 +1,32 @@
-# MCP Atlassian Integration
+# MCP Atlassian
 
-A powerful integration between MCP (Master Control Program) and Atlassian products (Confluence and Jira), providing advanced content management, search, and automation capabilities.
+Model Context Protocol (MCP) server for Atlassian Cloud products (Confluence and Jira). This integration is designed specifically for Atlassian Cloud instances and does not support Atlassian Server or Data Center deployments.
+
+<a href="https://glama.ai/mcp/servers/kc33m1kh5m"><img width="380" height="200" src="https://glama.ai/mcp/servers/kc33m1kh5m/badge" alt="Atlassian MCP server" /></a>
+
+## Feature Demo
+![Demo](https://github.com/user-attachments/assets/995d96a8-4cf3-4a03-abe1-a9f6aea27ac0)
 
 ## Features
 
-### Cross-Platform Integration
+### Core Features
+- Search and read Confluence spaces/pages
+- Create and update Confluence pages with rich formatting
+- Manage Confluence page comments and attachments
+- Search and read Jira issues
+- Create and update Jira issues
+- Get project issues and metadata
+- Unified search across Confluence and Jira
+- Template-based content creation
+- Advanced content formatting and section management
+
+### Advanced Capabilities
 - **Unified Search**
-  - Search across both Confluence and Jira simultaneously
-  - Configurable platform selection
-  - Concurrent search execution
-  - Unified result format with rich metadata
+  - Cross-platform search (Confluence and Jira)
   - Content excerpts and smart truncation
   - Results sorted by last modified date
 
-### Confluence Integration
 - **Content Management**
-  - Create and update pages
   - Section-based updates
   - Rich content formatting
   - Template management
@@ -23,160 +34,143 @@ A powerful integration between MCP (Master Control Program) and Atlassian produc
   - Comment management
 
 - **Advanced Formatting**
-  - Headings and subheadings (h1-h6)
-  - Bullet and numbered lists with nesting
+  - Headings (h1-h6)
+  - Nested lists
   - Code blocks with language support
-  - Tables with headers and row management
-  - Quotes and blockquotes
-  - Links and cross-references
-  - Text styling (bold, italic)
+  - Tables with rich formatting
   - Information panels and callouts
-  - Status indicators with color support
+  - Status indicators
   - Expandable sections
-  - Table of contents generation
   - Multi-column layouts
-  - Task lists with checkboxes
-  - Text highlighting
-  - Dividers
 
-### Jira Integration
-- **Issue Management**
-  - Create and update issues
-  - Status transitions
-  - Template-based creation
-  - Rich description formatting
-  - Attachment handling
-  - Comment management
+## API
 
-- **Project Features**
-  - Project listing
-  - Issue tracking
-  - Template management
-  - Custom field support
-  - JQL search capabilities
+### Resources
 
-### Template System
-- **Template Management**
-  - Discover available templates
-  - Blueprint template support
-  - Custom template support
-  - Template variable extraction
-  - Parameter validation
-  - Dynamic content generation
+- `confluence://{space_key}`: Access Confluence spaces and pages
+- `confluence://{space_key}/pages/{title}`: Access specific Confluence pages
+- `jira://{project_key}`: Access Jira project and its issues
+- `jira://{project_key}/issues/{issue_key}`: Access specific Jira issues
 
-- **Template Types**
-  - Confluence page templates
-  - Jira issue templates
-  - Project templates
-  - Custom templates
+### Tools
 
-### Attachment Handling
-- **File Management**
-  - Upload attachments
-  - Download attachment content
-  - Update existing attachments
-  - Delete attachments
-  - Content type detection
-  - Size limit enforcement
+#### Confluence Tools
 
-## Installation
+- **confluence_search**
+  - Search Confluence content using CQL
+  - Inputs:
+    - `query` (string): CQL query string
+    - `limit` (number, optional): Results limit (1-50, default: 10)
+  - Returns:
+    - Array of search results with page_id, title, space, url, last_modified, type, and excerpt
 
-1. Install the package:
-   ```bash
-   pip install mcp-atlassian
-   ```
+- **confluence_get_page**
+  - Get content of a specific Confluence page
+  - Inputs:
+    - `page_id` (string): Confluence page ID
+    - `include_metadata` (boolean, optional): Include page metadata (default: true)
 
-2. Set up environment variables:
-   ```bash
-   # Confluence settings
-   CONFLUENCE_URL=https://your-instance.atlassian.net/wiki
-   CONFLUENCE_USERNAME=your-email@domain.com
-   CONFLUENCE_API_TOKEN=your-api-token
+- **confluence_get_comments**
+  - Get comments for a specific Confluence page
+  - Input: `page_id` (string)
 
-   # Jira settings
-   JIRA_URL=https://your-instance.atlassian.net
-   JIRA_USERNAME=your-email@domain.com
-   JIRA_API_TOKEN=your-api-token
-   ```
+- **confluence_create_page**
+  - Create a new Confluence page
+  - Inputs:
+    - `space_key` (string): Space key
+    - `title` (string): Page title
+    - `content` (string): Page content
+    - `parent_id` (string, optional): Parent page ID
 
-## Usage Examples
+- **confluence_update_page**
+  - Update existing Confluence page
+  - Inputs:
+    - `page_id` (string): Page ID
+    - `content` (string): Updated content
+    - `title` (string, optional): New title
 
-### Unified Search
-```python
-# Search across both platforms
-results = unified_search.search("your query")
+#### Jira Tools
 
-# Search specific platform
-results = unified_search.search("your query", platforms=["confluence"])
-```
+- **jira_get_issue**
+  - Get details of a specific Jira issue
+  - Inputs:
+    - `issue_key` (string): Jira issue key (e.g., 'PROJ-123')
+    - `expand` (string, optional): Fields to expand
 
-### Content Creation with Templates
-```python
-# Create from Confluence template
-page = create_from_confluence_template(
-    template_id="template-123",
-    space_key="DOCS",
-    title="New Documentation",
-    template_parameters={
-        "author": "AI Assistant",
-        "version": "1.0"
+- **jira_search**
+  - Search Jira issues using JQL
+  - Inputs:
+    - `jql` (string): JQL query string
+    - `fields` (string, optional): Comma-separated fields (default: "*all")
+    - `limit` (number, optional): Results limit (1-50, default: 10)
+
+- **jira_get_project_issues**
+  - Get all issues for a specific Jira project
+  - Inputs:
+    - `project_key` (string): Project key
+    - `limit` (number, optional): Results limit (1-50, default: 10)
+
+- **jira_create_issue**
+  - Create a new Jira issue
+  - Inputs:
+    - `project_key` (string): Project key
+    - `summary` (string): Issue summary
+    - `description` (string): Issue description
+    - `issue_type` (string): Issue type (e.g., 'Task', 'Bug')
+
+## Usage with Claude Desktop
+
+1. Get API tokens from: https://id.atlassian.com/manage-profile/security/api-tokens
+
+2. Add to your `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "mcp-atlassian": {
+      "command": "uvx",
+      "args": ["mcp-atlassian"],
+      "env": {
+        "CONFLUENCE_URL": "https://your-domain.atlassian.net/wiki",
+        "CONFLUENCE_USERNAME": "your.email@domain.com",
+        "CONFLUENCE_API_TOKEN": "your_api_token",
+        "JIRA_URL": "https://your-domain.atlassian.net",
+        "JIRA_USERNAME": "your.email@domain.com",
+        "JIRA_API_TOKEN": "your_api_token"
+      }
     }
-)
+  }
+}
+```
 
-# Create from Jira template
-issue = create_from_jira_template(
-    template_id="template-456",
-    project_key="PROJ",
-    summary="New Feature Request",
-    template_parameters={
-        "priority": "High",
-        "components": ["Backend"]
+<details>
+<summary>Alternative configuration using <code>uv</code></summary>
+
+```json
+{
+  "mcpServers": {
+    "mcp-atlassian": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/path/to/mcp-atlassian",
+        "run",
+        "mcp-atlassian"
+      ],
+      "env": {
+        "CONFLUENCE_URL": "https://your-domain.atlassian.net/wiki",
+        "CONFLUENCE_USERNAME": "your.email@domain.com",
+        "CONFLUENCE_API_TOKEN": "your_api_token",
+        "JIRA_URL": "https://your-domain.atlassian.net",
+        "JIRA_USERNAME": "your.email@domain.com",
+        "JIRA_API_TOKEN": "your_api_token"
+      }
     }
-)
+  }
+}
 ```
-
-### Rich Content Formatting
-```python
-content = (
-    MarkupFormatter.heading("Project Documentation", level=1) +
-    MarkupFormatter.status("In Progress", color="blue") +
-    MarkupFormatter.panel(
-        "This is a beta release",
-        title="Notice",
-        panel_type="warning"
-    ) +
-    MarkupFormatter.table_of_contents()
-)
-```
-
-### Section Management
-```python
-# Update specific section
-update_confluence_section(
-    page_id="123",
-    heading="Implementation",
-    content="Updated content..."
-)
-
-# Insert after section
-insert_after_confluence_section(
-    page_id="123",
-    heading="Overview",
-    content="New section content..."
-)
-```
-
-### Attachment Handling
-```python
-# Add attachment
-add_confluence_attachment(
-    page_id="123",
-    file_path="document.pdf"
-)
-
-# Get attachments
-attachments = get_confluence_attachments(page_id="123")
-```
+Replace `/path/to/mcp-atlassian` with the actual path where you've cloned the repository.
+</details>
 
 ## Dependencies
 - atlassian-python-api (≥3.41.16)
@@ -186,11 +180,12 @@ attachments = get_confluence_attachments(page_id="123")
 - python-dotenv (≥1.0.1)
 - markdownify (≥0.11.6)
 
-## Contributing
-Contributions are welcome! Please read our [Contributing Guidelines](CONTRIBUTING.md) for details on how to submit pull requests.
+## Security
+
+- Never share API tokens
+- Keep .env files secure and private
+- See [SECURITY.md](SECURITY.md) for best practices
 
 ## License
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Security
-For security concerns, please see our [Security Policy](SECURITY.md).
+Licensed under MIT - see [LICENSE](LICENSE) file. This is not an official Atlassian product.

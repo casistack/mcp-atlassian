@@ -325,7 +325,12 @@ async def list_tools() -> list[Tool]:
             category=TOOL_CATEGORIES["templates"],
             inputSchema={
                 "type": "object",
-                "properties": {},
+                "properties": {
+                    "space_key": {
+                        "type": "string",
+                        "description": "Optional space key to get space-specific templates",
+                    },
+                },
             },
             metadata={
                 "icon": "📑",
@@ -340,7 +345,12 @@ async def list_tools() -> list[Tool]:
             category=TOOL_CATEGORIES["templates"],
             inputSchema={
                 "type": "object",
-                "properties": {},
+                "properties": {
+                    "project_key": {
+                        "type": "string",
+                        "description": "Optional project key to get project-specific templates",
+                    },
+                },
             },
             metadata={
                 "icon": "📝",
@@ -740,6 +750,45 @@ async def list_tools() -> list[Tool]:
             },
             metadata={
                 "icon": "🗑️",
+                "status": "stable",
+                "version": "1.0",
+                "author": "MCP Atlassian Team",
+            },
+        ),
+        Tool(
+            name="create_confluence_page",
+            description="Create a new Confluence page with custom content.",
+            category=TOOL_CATEGORIES["confluence"],
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "space_key": {
+                        "type": "string",
+                        "description": "Key of the space to create page in",
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Title for the new page",
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": "Content of the page in storage format",
+                    },
+                    "parent_id": {
+                        "type": "string",
+                        "description": "Optional ID of the parent page",
+                    },
+                    "representation": {
+                        "type": "string",
+                        "description": "Content representation ('storage' for wiki markup, 'editor' for rich text)",
+                        "default": "storage",
+                        "enum": ["storage", "editor"],
+                    },
+                },
+                "required": ["space_key", "title", "body"],
+            },
+            metadata={
+                "icon": "📄",
                 "status": "stable",
                 "version": "1.0",
                 "author": "MCP Atlassian Team",
@@ -1348,6 +1397,41 @@ async def call_tool(name: str, arguments: Any) -> Sequence[TextContent]:
                     type="text",
                     text=json.dumps(
                         {"success": False, "error": "Failed to delete attachment"},
+                        indent=2,
+                    ),
+                )
+            ]
+
+        elif name == "create_confluence_page":
+            doc = confluence_fetcher.create_page(
+                space_key=arguments["space_key"],
+                title=arguments["title"],
+                body=arguments["body"],
+                parent_id=arguments.get("parent_id"),
+                representation=arguments.get("representation", "storage"),
+            )
+            if doc:
+                return [
+                    TextContent(
+                        type="text",
+                        text=json.dumps(
+                            {
+                                "success": True,
+                                "page_id": doc.metadata["page_id"],
+                                "title": doc.metadata["title"],
+                                "space_key": doc.metadata["space_key"],
+                                "url": doc.metadata["url"],
+                                "version": doc.metadata["version"],
+                            },
+                            indent=2,
+                        ),
+                    )
+                ]
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {"success": False, "error": "Failed to create page"},
                         indent=2,
                     ),
                 )

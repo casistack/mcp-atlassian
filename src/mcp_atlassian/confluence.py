@@ -21,15 +21,13 @@ logger = logging.getLogger("mcp-atlassian")
 
 
 class ConfluenceFetcher:
-    """Handles fetching and parsing content from Confluence."""
+    """Fetches content from Confluence."""
 
     def __init__(self):
+        """Initialize the fetcher."""
         url = os.getenv("CONFLUENCE_URL")
         username = os.getenv("CONFLUENCE_USERNAME")
         token = os.getenv("CONFLUENCE_API_TOKEN")
-
-        if not all([url, username, token]):
-            raise ValueError("Missing required Confluence environment variables")
 
         self.config = ConfluenceConfig(url=url, username=username, api_token=token)
         self.confluence = Confluence(
@@ -40,6 +38,7 @@ class ConfluenceFetcher:
         )
         self.preprocessor = TextPreprocessor(self.config.url, self.confluence)
         self.content_editor = ContentEditor()
+        self.logger = logging.getLogger("mcp-atlassian")
 
     def _process_html_content(
         self, html_content: str, space_key: str
@@ -814,66 +813,44 @@ class ConfluenceFetcher:
             logger.error(f"Error deleting page: {e}")
             return False
 
-    def get_templates(self, space_key: Optional[str] = None) -> list[dict]:
-        """Get all available templates for a space or global templates.
-
-        Args:
-            space_key: Optional space key to get space-specific templates
-
-        Returns:
-            List of template dictionaries containing id, name, description, and other metadata
-        """
+    def get_templates(self, space_key=None):
+        """Get available templates for a space or globally."""
+        templates = []
         try:
-            templates = []
-
             # Get blueprint templates
-            blueprint_response = (
-                self.confluence.get_blueprint_templates(space_key) if space_key else {}
-            )
-            logger.debug(f"Blueprint response: {blueprint_response}")
+            blueprint_response = self.confluence.get_blueprint_templates(space_key)
+            self.logger.debug(f"Blueprint response: {blueprint_response}")
 
-            # Handle blueprints from the response
-            blueprints = blueprint_response.get("blueprints", [])
-            for blueprint in blueprints:
-                templates.append(
-                    {
-                        "id": blueprint.get("blueprintModuleCompleteKey", ""),
-                        "name": blueprint.get("name", ""),
-                        "description": blueprint.get("description", ""),
-                        "type": "blueprint",
-                        "space_key": space_key if space_key else "global",
-                        "labels": blueprint.get("labels", []),
-                        "template_type": "blueprint",
-                    }
-                )
-
-            # Get custom templates
-            if space_key:
-                custom_response = self.confluence.get_content(
-                    space_key=space_key, type="template", expand="body.storage"
-                )
-                logger.debug(f"Custom templates response: {custom_response}")
-
-                custom_templates = custom_response.get("results", [])
-                for template in custom_templates:
+            if blueprint_response and isinstance(blueprint_response, list):
+                for template in blueprint_response:
                     templates.append(
                         {
-                            "id": template.get("id", ""),
-                            "name": template.get("title", ""),
-                            "description": template.get("description", ""),
-                            "type": "custom",
-                            "space_key": space_key,
-                            "content": template.get("body", {})
-                            .get("storage", {})
-                            .get("value", ""),
-                            "template_type": "custom",
+                            "id": template.get("templateId"),
+                            "name": template.get("name"),
+                            "description": template.get("description"),
+                            "type": "blueprint",
+                            "space_key": template.get("space", {}).get("key"),
                         }
                     )
 
-            logger.debug(f"Total templates found: {len(templates)}")
-            return templates
+            # Get custom templates
+            if space_key:
+                custom_templates = self.confluence.get_content_templates(space_key)
+
+                if custom_templates and isinstance(custom_templates, list):
+                    for template in custom_templates:
+                        templates.append(
+                            {
+                                "id": template.get("id"),
+                                "name": template.get("title"),
+                                "description": template.get("description"),
+                                "type": "custom",
+                                "space_key": space_key,
+                            }
+                        )
 
         except Exception as e:
-            logger.error(f"Error fetching Confluence templates: {e}")
-            logger.debug("Exception details:", exc_info=True)
-            return []
+            self.logger.error(f"Error fetching Confluence templates: {str(e)}")
+            self.logger.debug("Exception details:", exc_info=True)
+
+        return templates

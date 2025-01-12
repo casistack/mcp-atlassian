@@ -854,3 +854,86 @@ class ConfluenceFetcher:
             self.logger.debug("Exception details:", exc_info=True)
 
         return templates
+
+    def search_pages(self, title: str, limit: int = 10) -> List[Document]:
+        """Search for pages across all spaces by title."""
+        try:
+            # Use CQL to search for pages with the given title
+            cql = f'type = page AND title ~ "{title}"'
+            self.logger.debug(f"Executing CQL query: {cql}")
+
+            results = self.confluence.cql(
+                cql, limit=limit, expand="body.storage,version,space"
+            )
+            self.logger.debug(f"Raw search results: {results}")
+
+            if not results or "results" not in results:
+                self.logger.debug("No results found or invalid response format")
+                return []
+
+            documents = []
+            for result in results["results"]:
+                try:
+                    # Extract content details from the result
+                    content = result.get("content", {})
+                    space_key = (
+                        content.get("_expandable", {}).get("space", "").split("/")[-1]
+                    )
+
+                    # Fetch the full page content since it's not in the CQL results
+                    page = self.confluence.get_page_by_id(
+                        content["id"], expand="body.storage,version,space"
+                    )
+
+                    if not page:
+                        self.logger.debug(
+                            f"Could not fetch full page content for ID: {content['id']}"
+                        )
+                        continue
+
+                    content_body = (
+                        page.get("body", {}).get("storage", {}).get("value", "")
+                    )
+                    if not content_body:
+                        self.logger.debug(f"No content found for page: {content['id']}")
+                        continue
+
+                    processed_html, processed_markdown = self._process_html_content(
+                        content_body, space_key
+                    )
+
+                    # Get space details
+                    space = page.get("space", {})
+
+                    # Get version and author information
+                    version = page.get("version", {})
+                    author = version.get("by", {})
+
+                    metadata = {
+                        "page_id": content["id"],
+                        "title": content["title"],
+                        "version": version.get("number", 1),
+                        "url": f"{self.config.url}{result['url']}",
+                        "space_key": space.get("key", space_key),
+                        "space_name": space.get("name", "Unknown Space"),
+                        "author_name": author.get("displayName", "Unknown"),
+                        "last_modified": result.get("lastModified"),
+                    }
+
+                    documents.append(
+                        Document(page_content=processed_markdown, metadata=metadata)
+                    )
+                    self.logger.debug(
+                        f"Successfully processed document: {metadata['title']}"
+                    )
+                except Exception as e:
+                    self.logger.error(f"Error processing search result: {str(e)}")
+                    self.logger.debug("Result that caused error:", result)
+                    continue
+
+            return documents
+
+        except Exception as e:
+            self.logger.error(f"Error searching pages: {str(e)}")
+            self.logger.debug("Full error details:", exc_info=True)
+            return []

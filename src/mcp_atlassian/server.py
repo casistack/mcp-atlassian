@@ -1001,22 +1001,39 @@ async def call_tool(name: str, arguments: Any) -> Sequence[TextContent]:
             ]
 
         elif name == "confluence_search":
-            limit = min(int(arguments.get("limit", 10)), 50)
-            documents = confluence_fetcher.search(arguments["query"], limit)
-            search_results = [
-                {
-                    "page_id": doc.metadata["page_id"],
-                    "title": doc.metadata["title"],
-                    "space": doc.metadata["space"],
-                    "url": doc.metadata["url"],
-                    "last_modified": doc.metadata["last_modified"],
-                    "type": doc.metadata["type"],
-                    "excerpt": doc.page_content,
-                }
-                for doc in documents
-            ]
+            query = arguments.get("query", "")
+            limit = arguments.get("limit", 10)
 
-            return [TextContent(type="text", text=json.dumps(search_results, indent=2))]
+            if not query:
+                return [TextContent(text="Error: Query is required")]
+
+            # Extract title from CQL if provided
+            title = query
+            if "title =" in query:
+                title = query.split("title =")[1].strip().strip('"')
+            elif "title ~" in query:
+                title = query.split("title ~")[1].strip().strip('"')
+
+            results = confluence_fetcher.search_pages(title, limit)
+
+            if not results:
+                return [TextContent(text="No pages found matching the query")]
+
+            response_texts = []
+            for doc in results:
+                metadata = doc.metadata
+                content = f"""Title: {metadata['title']}
+Space: {metadata['space_name']} ({metadata['space_key']})
+URL: {metadata['url']}
+Last Modified: {metadata['last_modified']}
+Author: {metadata['author_name']}
+
+Content Preview:
+{doc.page_content[:500]}...
+"""
+                response_texts.append(TextContent(text=content))
+
+            return response_texts
 
         elif name == "confluence_get_page":
             doc = confluence_fetcher.get_page_content(arguments["page_id"])

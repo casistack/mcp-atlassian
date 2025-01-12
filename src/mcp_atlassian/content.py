@@ -733,6 +733,7 @@ class ContentEditor:
 
         for block in content_blocks:
             if not isinstance(block, dict) or "type" not in block:
+                logger.warning("Invalid content block format: missing type")
                 continue
 
             block_type = block.get("type", "")
@@ -753,14 +754,23 @@ class ContentEditor:
                     formatted_content.append(f"<h{level}>{content}</h{level}>\n")
                 elif block_type == "text":
                     style = block.get("style", [])
-                    if "bold" in style:
-                        content = f"<strong>{content}</strong>"
-                    if "italic" in style:
-                        content = f"<em>{content}</em>"
+                    if isinstance(style, list):
+                        if "bold" in style:
+                            content = f"<strong>{content}</strong>"
+                        if "italic" in style:
+                            content = f"<em>{content}</em>"
+                    elif isinstance(style, dict):
+                        if style.get("bold"):
+                            content = f"<strong>{content}</strong>"
+                        if style.get("italic"):
+                            content = f"<em>{content}</em>"
                     formatted_content.append(f"<p>{content}</p>\n")
                 elif block_type == "list":
                     tag = "ol" if block.get("style") == "numbered" else "ul"
                     items = block.get("items", [])
+                    if not isinstance(items, list):
+                        logger.warning(f"Invalid list items format for block: {block}")
+                        continue
                     formatted_items = "\n".join(f"<li>{item}</li>" for item in items)
                     formatted_content.append(f"<{tag}>\n{formatted_items}\n</{tag}>\n")
                 elif block_type == "code":
@@ -787,6 +797,38 @@ class ContentEditor:
                         + "<ac:rich-text-body>\n"
                         f"<p>{content}</p>\n"
                         "</ac:rich-text-body>\n"
+                        "</ac:structured-macro>\n"
+                    )
+                elif block_type == "table":
+                    headers = block.get("headers", [])
+                    rows = block.get("rows", [])
+                    if not (isinstance(headers, list) and isinstance(rows, list)):
+                        logger.warning(f"Invalid table format for block: {block}")
+                        continue
+                    table_content = ["<table><tbody>"]
+                    if headers:
+                        header_row = (
+                            "<tr>" + "".join(f"<th>{h}</th>" for h in headers) + "</tr>"
+                        )
+                        table_content.append(header_row)
+                    for row in rows:
+                        if not isinstance(row, list):
+                            continue
+                        table_row = (
+                            "<tr>"
+                            + "".join(f"<td>{cell}</td>" for cell in row)
+                            + "</tr>"
+                        )
+                        table_content.append(table_row)
+                    table_content.append("</tbody></table>")
+                    formatted_content.append("\n".join(table_content) + "\n")
+                elif block_type == "toc":
+                    min_level = props.get("min_level", 1)
+                    max_level = props.get("max_level", 7)
+                    formatted_content.append(
+                        f'<ac:structured-macro ac:name="toc">\n'
+                        f'<ac:parameter ac:name="minLevel">{min_level}</ac:parameter>\n'
+                        f'<ac:parameter ac:name="maxLevel">{max_level}</ac:parameter>\n'
                         "</ac:structured-macro>\n"
                     )
             except Exception as e:

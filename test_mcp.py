@@ -15,40 +15,49 @@ async def test_content_handling():
     content_editor = ContentEditor()
     editor = content_editor.create_editor()
 
-    # Test various content block types
+    # Test blocks matching the AI's request structure
     test_blocks = [
-        {"type": "status", "content": "In Progress", "properties": {"color": "blue"}},
-        {"type": "heading", "content": "Test Heading", "properties": {"level": 1}},
+        {"type": "status", "properties": {"color": "blue"}, "content": "In Progress"},
         {
-            "type": "text",
-            "content": "This is a test paragraph",
-            "style": {"bold": True},
+            "type": "heading",
+            "properties": {"level": 1},
+            "content": "Advanced Formatting Features",
         },
-        {"type": "list", "items": ["Item 1", "Item 2", "Item 3"], "style": "bullet"},
+        {
+            "type": "list",
+            "style": "bullet",
+            "items": [
+                "Status indicators for project tracking",
+                "Hierarchical headings for organization",
+                "Code blocks with syntax highlighting",
+                "Info panels for important notes",
+                "Rich text formatting options",
+            ],
+        },
+        {
+            "type": "heading",
+            "properties": {"level": 2},
+            "content": "Python Code Example",
+        },
         {
             "type": "code",
-            "content": "print('Hello World')",
             "properties": {"language": "python"},
+            "content": "def greet(name):\n    print(f'Hello, {name}!')\n\ngreet('World')",
         },
         {
             "type": "panel",
-            "content": "Important information",
-            "properties": {"type": "info", "title": "Note"},
+            "properties": {"type": "info", "title": "Important Notes"},
+            "content": "1. Always follow coding best practices\n2. Use proper documentation\n3. Maintain consistent formatting\n4. Test your code thoroughly",
         },
     ]
 
-    # Process each block
     try:
+        # Process each block
         for block in test_blocks:
             if block["type"] == "status":
                 editor.status(block["content"], block["properties"]["color"])
             elif block["type"] == "heading":
                 editor.heading(block["content"], block["properties"]["level"])
-            elif block["type"] == "text":
-                if block.get("style", {}).get("bold"):
-                    editor.bold(block["content"])
-                else:
-                    editor.text(block["content"])
             elif block["type"] == "list":
                 if block.get("style") == "numbered":
                     editor.numbered_list(block["items"])

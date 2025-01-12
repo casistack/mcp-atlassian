@@ -483,6 +483,268 @@ async def list_tools() -> list[Tool]:
                 "author": "MCP Atlassian Team",
             },
         ),
+        Tool(
+            name="update_confluence_page",
+            description="Update an existing Confluence page with new content.",
+            category=TOOL_CATEGORIES["confluence"],
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "page_id": {
+                        "type": "string",
+                        "description": "The ID of the page to update",
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "The new title of the page",
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": "The new content of the page",
+                    },
+                    "minor_edit": {
+                        "type": "boolean",
+                        "description": "Whether this is a minor edit",
+                        "default": False,
+                    },
+                },
+                "required": ["page_id", "title", "body"],
+            },
+            metadata={
+                "icon": "✏️",
+                "status": "stable",
+                "version": "1.0",
+                "author": "MCP Atlassian Team",
+            },
+        ),
+        Tool(
+            name="delete_confluence_page",
+            description="Delete a Confluence page.",
+            category=TOOL_CATEGORIES["confluence"],
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "page_id": {
+                        "type": "string",
+                        "description": "The ID of the page to delete",
+                    },
+                },
+                "required": ["page_id"],
+            },
+            metadata={
+                "icon": "🗑️",
+                "status": "stable",
+                "version": "1.0",
+                "author": "MCP Atlassian Team",
+            },
+        ),
+        Tool(
+            name="add_confluence_attachment",
+            description="Add an attachment to a Confluence page.",
+            category=TOOL_CATEGORIES["confluence"],
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "page_id": {
+                        "type": "string",
+                        "description": "The ID of the page to attach to",
+                    },
+                    "file_path": {
+                        "type": "string",
+                        "description": "Path to the file to attach",
+                    },
+                    "filename": {
+                        "type": "string",
+                        "description": "Optional filename for the attachment",
+                    },
+                },
+                "required": ["page_id", "file_path"],
+            },
+            metadata={
+                "icon": "📎",
+                "status": "stable",
+                "version": "1.0",
+                "author": "MCP Atlassian Team",
+            },
+        ),
+        Tool(
+            name="delete_confluence_attachment",
+            description="Delete an attachment from a Confluence page.",
+            category=TOOL_CATEGORIES["confluence"],
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "attachment_id": {
+                        "type": "string",
+                        "description": "The ID of the attachment to delete",
+                    },
+                },
+                "required": ["attachment_id"],
+            },
+            metadata={
+                "icon": "🗑️",
+                "status": "stable",
+                "version": "1.0",
+                "author": "MCP Atlassian Team",
+            },
+        ),
+        Tool(
+            name="create_jira_issue",
+            description="Create a new Jira issue with custom fields and options.",
+            category=TOOL_CATEGORIES["jira"],
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_key": {"type": "string", "description": "The project key"},
+                    "summary": {"type": "string", "description": "Issue summary/title"},
+                    "description": {
+                        "type": "string",
+                        "description": "Issue description",
+                    },
+                    "issue_type": {
+                        "type": "string",
+                        "description": "Type of issue (e.g., Task, Bug, Story)",
+                        "default": "Task",
+                    },
+                    "priority": {"type": "string", "description": "Priority level"},
+                    "assignee": {
+                        "type": "string",
+                        "description": "Username to assign the issue to",
+                    },
+                    "labels": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Labels to add to the issue",
+                    },
+                    "custom_fields": {
+                        "type": "object",
+                        "description": "Custom field values",
+                    },
+                },
+                "required": ["project_key", "summary", "description"],
+            },
+            metadata={
+                "icon": "➕",
+                "status": "stable",
+                "version": "1.0",
+                "author": "MCP Atlassian Team",
+            },
+        ),
+        Tool(
+            name="update_jira_issue",
+            description="Update an existing Jira issue with new values.",
+            category=TOOL_CATEGORIES["jira"],
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "issue_key": {
+                        "type": "string",
+                        "description": "The issue key to update",
+                    },
+                    "summary": {"type": "string", "description": "New issue summary"},
+                    "description": {
+                        "type": "string",
+                        "description": "New issue description",
+                    },
+                    "status": {"type": "string", "description": "New status"},
+                    "priority": {"type": "string", "description": "New priority level"},
+                    "assignee": {
+                        "type": "string",
+                        "description": "New assignee username",
+                    },
+                    "labels": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "New labels",
+                    },
+                    "custom_fields": {
+                        "type": "object",
+                        "description": "New custom field values",
+                    },
+                },
+                "required": ["issue_key"],
+            },
+            metadata={
+                "icon": "✏️",
+                "status": "stable",
+                "version": "1.0",
+                "author": "MCP Atlassian Team",
+            },
+        ),
+        Tool(
+            name="add_jira_comment",
+            description="Add a formatted comment to a Jira issue.",
+            category=TOOL_CATEGORIES["jira"],
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "issue_key": {"type": "string", "description": "The issue key"},
+                    "content": {"type": "string", "description": "Comment content"},
+                    "format_type": {
+                        "type": "string",
+                        "description": "Format type (e.g., 'code', 'quote', 'panel')",
+                    },
+                    "format_options": {
+                        "type": "object",
+                        "description": "Additional formatting options",
+                    },
+                },
+                "required": ["issue_key", "content", "format_type"],
+            },
+            metadata={
+                "icon": "💬",
+                "status": "stable",
+                "version": "1.0",
+                "author": "MCP Atlassian Team",
+            },
+        ),
+        Tool(
+            name="add_jira_attachment",
+            description="Add an attachment to a Jira issue.",
+            category=TOOL_CATEGORIES["jira"],
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "issue_key": {"type": "string", "description": "The issue key"},
+                    "file_path": {
+                        "type": "string",
+                        "description": "Path to the file to attach",
+                    },
+                    "filename": {
+                        "type": "string",
+                        "description": "Optional filename for the attachment",
+                    },
+                },
+                "required": ["issue_key", "file_path"],
+            },
+            metadata={
+                "icon": "📎",
+                "status": "stable",
+                "version": "1.0",
+                "author": "MCP Atlassian Team",
+            },
+        ),
+        Tool(
+            name="delete_jira_attachment",
+            description="Delete an attachment from a Jira issue.",
+            category=TOOL_CATEGORIES["jira"],
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "attachment_id": {
+                        "type": "string",
+                        "description": "The ID of the attachment to delete",
+                    },
+                },
+                "required": ["attachment_id"],
+            },
+            metadata={
+                "icon": "🗑️",
+                "status": "stable",
+                "version": "1.0",
+                "author": "MCP Atlassian Team",
+            },
+        ),
     ]
     logger.debug(f"Returning {len(tools)} tools: {[tool.name for tool in tools]}")
     return tools
@@ -780,6 +1042,312 @@ async def call_tool(name: str, arguments: Any) -> Sequence[TextContent]:
                                 for att in attachments
                             ],
                         },
+                        indent=2,
+                    ),
+                )
+            ]
+
+        elif name == "update_confluence_page":
+            doc = confluence_fetcher.update_page(
+                page_id=arguments["page_id"],
+                title=arguments["title"],
+                body=arguments["body"],
+                minor_edit=arguments["minor_edit"],
+            )
+            if doc:
+                return [
+                    TextContent(
+                        type="text",
+                        text=json.dumps(
+                            {
+                                "success": True,
+                                "key": doc.metadata["key"],
+                                "title": doc.metadata["title"],
+                                "status": doc.metadata["status"],
+                                "type": doc.metadata["type"],
+                                "url": doc.metadata["link"],
+                                "description": doc.page_content,
+                            },
+                            indent=2,
+                        ),
+                    )
+                ]
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {"success": False, "error": "Failed to update page"},
+                        indent=2,
+                    ),
+                )
+            ]
+
+        elif name == "delete_confluence_page":
+            doc = confluence_fetcher.delete_page(arguments["page_id"])
+            if doc:
+                return [
+                    TextContent(
+                        type="text",
+                        text=json.dumps(
+                            {
+                                "success": True,
+                                "key": doc.metadata["key"],
+                                "title": doc.metadata["title"],
+                                "status": doc.metadata["status"],
+                                "type": doc.metadata["type"],
+                                "url": doc.metadata["link"],
+                                "description": doc.page_content,
+                            },
+                            indent=2,
+                        ),
+                    )
+                ]
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {"success": False, "error": "Failed to delete page"},
+                        indent=2,
+                    ),
+                )
+            ]
+
+        elif name == "add_confluence_attachment":
+            doc = confluence_fetcher.add_attachment(
+                page_id=arguments["page_id"],
+                file_path=arguments["file_path"],
+                filename=arguments["filename"],
+            )
+            if doc:
+                return [
+                    TextContent(
+                        type="text",
+                        text=json.dumps(
+                            {
+                                "success": True,
+                                "key": doc.metadata["key"],
+                                "title": doc.metadata["title"],
+                                "status": doc.metadata["status"],
+                                "type": doc.metadata["type"],
+                                "url": doc.metadata["link"],
+                                "description": doc.page_content,
+                            },
+                            indent=2,
+                        ),
+                    )
+                ]
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {"success": False, "error": "Failed to add attachment"},
+                        indent=2,
+                    ),
+                )
+            ]
+
+        elif name == "delete_confluence_attachment":
+            doc = confluence_fetcher.delete_attachment(arguments["attachment_id"])
+            if doc:
+                return [
+                    TextContent(
+                        type="text",
+                        text=json.dumps(
+                            {
+                                "success": True,
+                                "key": doc.metadata["key"],
+                                "title": doc.metadata["title"],
+                                "status": doc.metadata["status"],
+                                "type": doc.metadata["type"],
+                                "url": doc.metadata["link"],
+                                "description": doc.page_content,
+                            },
+                            indent=2,
+                        ),
+                    )
+                ]
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {"success": False, "error": "Failed to delete attachment"},
+                        indent=2,
+                    ),
+                )
+            ]
+
+        elif name == "create_jira_issue":
+            doc = jira_fetcher.create_issue(
+                project_key=arguments["project_key"],
+                summary=arguments["summary"],
+                description=arguments["description"],
+                issue_type=arguments["issue_type"],
+                priority=arguments["priority"],
+                assignee=arguments["assignee"],
+                labels=arguments["labels"],
+                custom_fields=arguments["custom_fields"],
+            )
+            if doc:
+                return [
+                    TextContent(
+                        type="text",
+                        text=json.dumps(
+                            {
+                                "success": True,
+                                "key": doc.metadata["key"],
+                                "title": doc.metadata["title"],
+                                "status": doc.metadata["status"],
+                                "type": doc.metadata["type"],
+                                "url": doc.metadata["link"],
+                                "description": doc.page_content,
+                            },
+                            indent=2,
+                        ),
+                    )
+                ]
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {"success": False, "error": "Failed to create issue"},
+                        indent=2,
+                    ),
+                )
+            ]
+
+        elif name == "update_jira_issue":
+            doc = jira_fetcher.update_issue(
+                issue_key=arguments["issue_key"],
+                summary=arguments["summary"],
+                description=arguments["description"],
+                status=arguments["status"],
+                priority=arguments["priority"],
+                assignee=arguments["assignee"],
+                labels=arguments["labels"],
+                custom_fields=arguments["custom_fields"],
+            )
+            if doc:
+                return [
+                    TextContent(
+                        type="text",
+                        text=json.dumps(
+                            {
+                                "success": True,
+                                "key": doc.metadata["key"],
+                                "title": doc.metadata["title"],
+                                "status": doc.metadata["status"],
+                                "type": doc.metadata["type"],
+                                "url": doc.metadata["link"],
+                                "description": doc.page_content,
+                            },
+                            indent=2,
+                        ),
+                    )
+                ]
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {"success": False, "error": "Failed to update issue"},
+                        indent=2,
+                    ),
+                )
+            ]
+
+        elif name == "add_jira_comment":
+            doc = jira_fetcher.add_comment(
+                issue_key=arguments["issue_key"],
+                content=arguments["content"],
+                format_type=arguments["format_type"],
+                format_options=arguments["format_options"],
+            )
+            if doc:
+                return [
+                    TextContent(
+                        type="text",
+                        text=json.dumps(
+                            {
+                                "success": True,
+                                "key": doc.metadata["key"],
+                                "title": doc.metadata["title"],
+                                "status": doc.metadata["status"],
+                                "type": doc.metadata["type"],
+                                "url": doc.metadata["link"],
+                                "description": doc.page_content,
+                            },
+                            indent=2,
+                        ),
+                    )
+                ]
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {"success": False, "error": "Failed to add comment"},
+                        indent=2,
+                    ),
+                )
+            ]
+
+        elif name == "add_jira_attachment":
+            doc = jira_fetcher.add_attachment(
+                issue_key=arguments["issue_key"],
+                file_path=arguments["file_path"],
+                filename=arguments["filename"],
+            )
+            if doc:
+                return [
+                    TextContent(
+                        type="text",
+                        text=json.dumps(
+                            {
+                                "success": True,
+                                "key": doc.metadata["key"],
+                                "title": doc.metadata["title"],
+                                "status": doc.metadata["status"],
+                                "type": doc.metadata["type"],
+                                "url": doc.metadata["link"],
+                                "description": doc.page_content,
+                            },
+                            indent=2,
+                        ),
+                    )
+                ]
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {"success": False, "error": "Failed to add attachment"},
+                        indent=2,
+                    ),
+                )
+            ]
+
+        elif name == "delete_jira_attachment":
+            doc = jira_fetcher.delete_attachment(arguments["attachment_id"])
+            if doc:
+                return [
+                    TextContent(
+                        type="text",
+                        text=json.dumps(
+                            {
+                                "success": True,
+                                "key": doc.metadata["key"],
+                                "title": doc.metadata["title"],
+                                "status": doc.metadata["status"],
+                                "type": doc.metadata["type"],
+                                "url": doc.metadata["link"],
+                                "description": doc.page_content,
+                            },
+                            indent=2,
+                        ),
+                    )
+                ]
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {"success": False, "error": "Failed to delete attachment"},
                         indent=2,
                     ),
                 )

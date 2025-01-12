@@ -15,7 +15,7 @@ from .search import UnifiedSearch
 from .content import TemplateHandler
 
 # Configure logging
-logging.basicConfig(level=logging.disable())
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("mcp-atlassian")
 
 # Initialize the content fetchers

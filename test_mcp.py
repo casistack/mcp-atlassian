@@ -444,9 +444,209 @@ async def test_confluence_create_page():
         print(traceback.format_exc())
 
 
+async def test_confluence_update_page():
+    """Test Confluence page update functionality using direct code calls."""
+    try:
+        if not validate_config():
+            print("ERROR: Configuration validation failed")
+            return
+
+        print("\n=== Testing Confluence Update Page ===")
+
+        # Initialize the ConfluenceFetcher and ContentEditor
+        confluence = ConfluenceFetcher()
+        editor = ContentEditor()
+
+        # First create a test page to update
+        print("\n1. Creating test page for updates...")
+        try:
+            title = "Test Page - For Updates"
+            # Create initial content with proper Confluence storage format
+            rich_editor = editor.create_editor()
+            rich_editor.heading("Initial Content", 1)
+            rich_editor.text("This is a test page that will be updated.")
+            rich_editor.bullet_list(["Initial item 1", "Initial item 2"])
+
+            formatted_content = editor.create_rich_content(rich_editor.get_content())
+            space_key = "IS"
+
+            page = confluence.create_page(space_key, title, formatted_content)
+            if page:
+                print(f"Successfully created test page:")
+                print(f"Title: {page.metadata['title']}")
+                print(f"ID: {page.metadata['page_id']}")
+                print(f"URL: {page.metadata['url']}")
+                test_page_id = page.metadata["page_id"]
+
+                # Verify the page exists
+                verify_page = confluence.get_page_content(test_page_id)
+                if verify_page:
+                    print("✓ Page verified - accessible via API")
+                else:
+                    print("✗ Page verification failed - not accessible via API")
+            else:
+                print("Failed to create test page")
+                return
+        except Exception as e:
+            print(f"Error creating test page: {str(e)}")
+            return
+
+        # Add a pause to allow manual verification
+        print("\nPage has been created. Please verify it in your browser:")
+        print(f"URL: {page.metadata['url']}")
+        input("Press Enter to continue with updates...")
+
+        # Test Case 1: Update page title
+        print("\n2. Testing page title update...")
+        try:
+            # First get the existing page content
+            print("Fetching current page content...")
+            current_page = confluence.confluence.get_page_by_id(
+                page_id=test_page_id, expand="body.storage,version"
+            )
+            if not current_page:
+                print("Failed to get current page content")
+                return
+
+            print(
+                f"Current page version: {current_page.get('version', {}).get('number')}"
+            )
+            print(f"Current page title: {current_page.get('title')}")
+            print(
+                "Current page content length:",
+                len(current_page["body"]["storage"]["value"]),
+            )
+
+            new_title = "Test Page - Updated Title"
+            print(f"Attempting to update title to: {new_title}")
+
+            # Keep the existing content but update the title
+            print("Making update_page API call...")
+            page = confluence.update_page(
+                page_id=test_page_id,
+                title=new_title,
+                body=current_page["body"]["storage"]["value"],
+                type="page",  # Required parameter
+                representation="storage",
+            )
+            if page:
+                print(f"Successfully updated page title to: {page.metadata['title']}")
+                print(f"New version: {page.metadata.get('version')}")
+                print(f"URL: {page.metadata['url']}")
+            else:
+                print("Failed to update page title")
+                print("Debug info:")
+                print(f"Page ID: {test_page_id}")
+                print(f"Attempted new title: {new_title}")
+                print("Content length:", len(current_page["body"]["storage"]["value"]))
+                print("Current version:", current_page.get("version", {}).get("number"))
+
+        except Exception as e:
+            print(f"Error updating page title: {str(e)}")
+            import traceback
+
+            print("Full error details:")
+            print(traceback.format_exc())
+
+        # Test Case 2: Update page content with rich formatting
+        print("\n3. Testing content update with rich formatting...")
+        try:
+            # First get the current page again as it may have changed
+            print("Fetching current page content for content update...")
+            current_page = confluence.confluence.get_page_by_id(
+                page_id=test_page_id, expand="body.storage,version"
+            )
+            if not current_page:
+                print("Failed to get current page content")
+                return
+
+            print(
+                f"Current page version: {current_page.get('version', {}).get('number')}"
+            )
+            print(f"Current page title: {current_page.get('title')}")
+            print(
+                "Current page content length:",
+                len(current_page["body"]["storage"]["value"]),
+            )
+
+            # Create new content while preserving the title
+            print("Creating new rich content...")
+            rich_editor = editor.create_editor()
+            rich_editor.heading("Updated Content", 1)
+            rich_editor.text("This page has been updated with rich formatting.")
+            rich_editor.bullet_list(["Update item 1", "Update item 2"])
+            rich_editor.status("Updated", "green")
+
+            formatted_content = editor.create_rich_content(rich_editor.get_content())
+            print("New content length:", len(formatted_content))
+
+            print("Making update_page API call...")
+            page = confluence.update_page(
+                page_id=test_page_id,
+                title=current_page["title"],  # Keep the current title
+                body=formatted_content,
+                type="page",  # Required parameter
+                representation="storage",
+            )
+            if page:
+                print("Successfully updated page content with rich formatting")
+                print(f"New version: {page.metadata['version']}")
+                print(f"URL: {page.metadata['url']}")
+            else:
+                print("Failed to update page content")
+                print("Debug info:")
+                print(f"Page ID: {test_page_id}")
+                print(f"Current title: {current_page['title']}")
+                print("New content length:", len(formatted_content))
+                print("Current version:", current_page.get("version", {}).get("number"))
+
+        except Exception as e:
+            print(f"Error updating page content: {str(e)}")
+            import traceback
+
+            print("Full error details:")
+            print(traceback.format_exc())
+
+        # Test Case 3: Update non-existent page
+        print("\n4. Testing update of non-existent page...")
+        try:
+            invalid_page_id = "99999999"
+            page = confluence.update_page(
+                page_id=invalid_page_id,
+                title="Invalid Page",
+                body="This should fail",
+                representation="storage",
+            )
+            if page:
+                print("Error: Successfully updated non-existent page")
+            else:
+                print("Successfully handled non-existent page error")
+        except Exception as e:
+            print(f"Expected error for non-existent page: {str(e)}")
+
+        # Add a pause before cleanup
+        input("\nPress Enter to proceed with cleanup...")
+
+        # Cleanup
+        print("\nCleaning up test pages...")
+        try:
+            if "test_page_id" in locals():
+                confluence.delete_page(test_page_id)
+                print(f"Deleted test page with ID: {test_page_id}")
+        except Exception as e:
+            print(f"Error during cleanup: {str(e)}")
+
+    except Exception as e:
+        print(f"ERROR: Error during test execution: {str(e)}")
+        import traceback
+
+        print("\nFull error details:")
+        print(traceback.format_exc())
+
+
 async def main():
-    print("Starting Confluence create page tests...")
-    await test_confluence_create_page()
+    print("Starting Confluence update page tests...")
+    await test_confluence_update_page()
     print("\nTests completed.")
 
 

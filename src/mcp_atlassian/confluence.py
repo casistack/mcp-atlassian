@@ -26,6 +26,9 @@ class ConfluenceFetcher:
     def __init__(self):
         """Initialize the fetcher."""
         url = os.getenv("CONFLUENCE_URL")
+        # Remove trailing /wiki from the URL if present
+        if url and url.endswith("/wiki"):
+            url = url[:-5]
         username = os.getenv("CONFLUENCE_USERNAME")
         token = os.getenv("CONFLUENCE_API_TOKEN")
 
@@ -54,6 +57,10 @@ class ConfluenceFetcher:
         """Get all available spaces."""
         return self.confluence.get_all_spaces(start=start, limit=limit)
 
+    def _get_page_url(self, space_key: str, page_id: str) -> str:
+        """Construct the correct URL for a Confluence page."""
+        return f"{self.config.url}/wiki/spaces/{space_key}/pages/{page_id}"
+
     def get_page_content(self, page_id: str, clean_html: bool = True) -> Document:
         """Get content of a specific page."""
         page = self.confluence.get_page_by_id(
@@ -74,7 +81,7 @@ class ConfluenceFetcher:
             "page_id": page_id,
             "title": page["title"],
             "version": version.get("number", 1),
-            "url": f"{self.config.url}/wiki/spaces/{space_key}/pages/{page_id}",
+            "url": self._get_page_url(space_key, page_id),
             "space_key": space_key,
             "author_name": author.get("displayName"),
             "space_name": page.get("space", {}).get("name", ""),
@@ -220,6 +227,12 @@ class ConfluenceFetcher:
             Document object if creation successful, None otherwise
         """
         try:
+            self.logger.debug(
+                f"Creating page with title: {title} in space: {space_key}"
+            )
+            self.logger.debug(f"Content representation: {representation}")
+            self.logger.debug(f"Content length: {len(body)}")
+
             page = self.confluence.create_page(
                 space=space_key,
                 title=title,
@@ -227,11 +240,19 @@ class ConfluenceFetcher:
                 parent_id=parent_id,
                 representation=representation,
             )
+
+            self.logger.debug(f"API Response: {page}")
+
             if page and page.get("id"):
-                return self.get_page_content(page["id"])
+                created_page = self.get_page_content(page["id"])
+                self.logger.debug(f"Created page metadata: {created_page.metadata}")
+                return created_page
+
+            self.logger.error("Failed to create page - API returned invalid response")
             return None
         except Exception as e:
-            logger.error(f"Error creating Confluence page: {e}")
+            self.logger.error(f"Error creating Confluence page: {e}")
+            self.logger.debug("Full error details:", exc_info=True)
             return None
 
     def update_page(
@@ -241,6 +262,7 @@ class ConfluenceFetcher:
         body: str,
         representation: str = "storage",
         minor_edit: bool = False,
+        type: str = "page",
     ) -> Optional[Document]:
         """Update an existing Confluence page.
 
@@ -250,6 +272,7 @@ class ConfluenceFetcher:
             body: The new content of the page
             representation: Content representation ('storage' for wiki markup, 'editor' for rich text)
             minor_edit: Whether this is a minor edit
+            type: The type of content ('page' or 'blogpost')
 
         Returns:
             Document object if update successful, None otherwise
@@ -260,16 +283,22 @@ class ConfluenceFetcher:
                 page_id=page_id, expand="version,space"
             )
             if not current_page:
+                self.logger.error(f"Page {page_id} not found")
                 return None
 
             version = current_page.get("version", {}).get("number", 0)
             space_key = current_page.get("space", {}).get("key", "")
+
+            self.logger.debug(f"Updating page {page_id} (version {version})")
+            self.logger.debug(f"New title: {title}")
+            self.logger.debug(f"Content length: {len(body)}")
 
             # Update the page
             updated_page = self.confluence.update_page(
                 page_id=page_id,
                 title=title,
                 body=body,
+                type=type,
                 representation=representation,
                 minor_edit=minor_edit,
                 version_number=version,
@@ -298,14 +327,16 @@ class ConfluenceFetcher:
                     "title": updated_page["title"],
                     "version": new_version,
                     "space_key": space_key,
-                    "url": f"{self.config.url}/wiki/spaces/{space_key}/pages/{updated_page['id']}",
+                    "url": self._get_page_url(space_key, updated_page["id"]),
                 }
 
                 return Document(page_content=processed_markdown, metadata=metadata)
 
+            self.logger.error("Failed to update page - API returned invalid response")
             return None
         except Exception as e:
-            logger.error(f"Error updating Confluence page: {e}")
+            self.logger.error(f"Error updating Confluence page: {e}")
+            self.logger.debug("Full error details:", exc_info=True)
             return None
 
     def update_page_section(
@@ -349,6 +380,7 @@ class ConfluenceFetcher:
                 page_id=page_id,
                 title=current_page["title"],
                 body=updated_content,
+                type="page",
                 representation="storage",
                 minor_edit=minor_edit,
                 version_number=version,
@@ -421,6 +453,7 @@ class ConfluenceFetcher:
                 page_id=page_id,
                 title=current_page["title"],
                 body=updated_content,
+                type="page",
                 representation="storage",
                 minor_edit=minor_edit,
                 version_number=version,
@@ -504,6 +537,7 @@ class ConfluenceFetcher:
                 page_id=page_id,
                 title=current_page["title"],
                 body=updated_content,
+                type="page",
                 representation="storage",
                 minor_edit=minor_edit,
                 version_number=version,
@@ -589,6 +623,7 @@ class ConfluenceFetcher:
                 page_id=page_id,
                 title=current_page["title"],
                 body=updated_content,
+                type="page",
                 representation="storage",
                 minor_edit=minor_edit,
                 version_number=version,

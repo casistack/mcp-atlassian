@@ -640,39 +640,64 @@ class ContentEditor:
         return RichTextEditor()
 
     def create_page(
-        self, space_key: str, title: str, editor: RichTextEditor
+        self,
+        space_key: str,
+        title: str,
+        editor: RichTextEditor,
+        parent_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Create a new page using the rich text editor content.
+        """Create a new page using the rich text editor content with improved validation.
 
         Args:
             space_key: The space key where to create the page
             title: The title of the new page
             editor: RichTextEditor instance with the page content
+            parent_id: Optional parent page ID
 
         Returns:
             Dict containing the created page information
         """
+        # Validate inputs
+        if not space_key or not isinstance(space_key, str):
+            raise ValueError("Invalid space key")
+
+        title = self.validate_page_title(title)
+
+        # Format content
         formatted_content = self.create_rich_content(editor.get_content())
+        if not formatted_content:
+            raise ValueError("Page content cannot be empty")
+
         self._ensure_confluence(space_key)
 
-        # Create the page
-        result = self.confluence.confluence.create_page(
-            space=space_key,
-            title=title,
-            body=formatted_content,
-            representation="storage",
-            editor="v2",
-        )
+        try:
+            # Create the page
+            result = self.confluence.confluence.create_page(
+                space=space_key,
+                title=title,
+                body=formatted_content,
+                parent_id=parent_id,
+                representation="storage",
+                editor="v2",
+            )
 
-        # Return page information
-        return {
-            "page_id": result.get("id"),
-            "title": result.get("title"),
-            "space_key": space_key,
-            "url": result.get("_links", {}).get("base")
-            + result.get("_links", {}).get("webui", ""),
-            "version": result.get("version", {}).get("number"),
-        }
+            if not result:
+                logger.error("Failed to create page - no result returned")
+                return None
+
+            # Return page information
+            return {
+                "page_id": result.get("id"),
+                "title": result.get("title"),
+                "space_key": space_key,
+                "url": result.get("_links", {}).get("base", "")
+                + result.get("_links", {}).get("webui", ""),
+                "version": result.get("version", {}).get("number"),
+                "parent_id": parent_id if parent_id else None,
+            }
+        except Exception as e:
+            logger.error(f"Error creating page: {str(e)}")
+            return None
 
     def format_text(self, text: str, formatting: List[str]) -> str:
         """Apply formatting to text.
@@ -846,6 +871,11 @@ class ContentEditor:
         """Convert content blocks to Confluence storage format."""
         formatted_content = []
 
+        # Input validation
+        if not isinstance(content_blocks, list):
+            logger.warning("Invalid content blocks format: not a list")
+            return ""
+
         for block in content_blocks:
             if not isinstance(block, dict) or "type" not in block:
                 logger.warning("Invalid content block format: missing type")
@@ -857,7 +887,14 @@ class ContentEditor:
 
             try:
                 if block_type == "status":
+                    # Validate color
+                    valid_colors = ["grey", "red", "yellow", "green", "blue"]
                     color = props.get("color", "grey")
+                    if color not in valid_colors:
+                        logger.warning(
+                            f"Invalid status color: {color}, defaulting to grey"
+                        )
+                        color = "grey"
                     formatted_content.append(
                         f'<ac:structured-macro ac:name="status">\n'
                         f'<ac:parameter ac:name="colour">{color}</ac:parameter>\n'
@@ -865,7 +902,13 @@ class ContentEditor:
                         "</ac:structured-macro>\n"
                     )
                 elif block_type == "heading":
+                    # Validate heading level
                     level = props.get("level", 1)
+                    if not isinstance(level, int) or level < 1 or level > 6:
+                        logger.warning(
+                            f"Invalid heading level: {level}, defaulting to 1"
+                        )
+                        level = 1
                     formatted_content.append(f"<h{level}>{content}</h{level}>\n")
                 elif block_type == "text":
                     # Handle text with advanced properties
@@ -878,245 +921,116 @@ class ContentEditor:
                                 f"background-color: {props['background']}"
                             )
                         if "alignment" in props:
-                            style_attrs.append(f"text-align: {props['alignment']}")
+                            valid_alignments = ["left", "center", "right", "justify"]
+                            alignment = props["alignment"]
+                            if alignment in valid_alignments:
+                                style_attrs.append(f"text-align: {alignment}")
                         if "indent" in props:
-                            style_attrs.append(f"margin-left: {props['indent']}em")
+                            indent = props["indent"]
+                            if isinstance(indent, (int, float)) and indent >= 0:
+                                style_attrs.append(f"margin-left: {indent}em")
 
                         style_attr = (
                             f' style="{"; ".join(style_attrs)}"' if style_attrs else ""
                         )
                         formatted_content.append(f"<p{style_attr}>{content}</p>\n")
                     else:
-                        style = block.get("style", [])
-                        if isinstance(style, list):
-                            if "bold" in style:
-                                content = f"<strong>{content}</strong>"
-                            if "italic" in style:
-                                content = f"<em>{content}</em>"
-                        elif isinstance(style, dict):
-                            if style.get("bold"):
-                                content = f"<strong>{content}</strong>"
-                            if style.get("italic"):
-                                content = f"<em>{content}</em>"
                         formatted_content.append(f"<p>{content}</p>\n")
                 elif block_type == "list":
-                    tag = "ol" if block.get("style") == "numbered" else "ul"
                     items = block.get("items", [])
                     if not isinstance(items, list):
-                        logger.warning(f"Invalid list items format for block: {block}")
+                        logger.warning("Invalid list items format")
                         continue
-                    formatted_items = "\n".join(f"<li>{item}</li>" for item in items)
-                    formatted_content.append(f"<{tag}>\n{formatted_items}\n</{tag}>\n")
-                elif block_type == "task_list":
-                    formatted_content.append(
-                        '<ac:structured-macro ac:name="tasklist">\n<ac:task-list>'
-                    )
-                    for item in block.get("items", []):
-                        status = (
-                            "complete"
-                            if item.get("status") == "complete"
-                            else "incomplete"
-                        )
-                        assignee = item.get("assignee", "")
-                        due_date = item.get("due", "")
-                        formatted_content.append(
-                            f"<ac:task>\n"
-                            f"<ac:task-status>{status}</ac:task-status>\n"
-                            f'<ac:task-body>{item["text"]}</ac:task-body>\n'
-                            + (
-                                f"<ac:task-assignee>{assignee}</ac:task-assignee>\n"
-                                if assignee
-                                else ""
+
+                    # Filter out non-string items
+                    items = [str(item) for item in items if item is not None]
+
+                    if not items:
+                        continue
+
+                    list_type = "ol" if block.get("style") == "numbered" else "ul"
+                    formatted_content.append(f"<{list_type}>\n")
+                    for item in items:
+                        formatted_content.append(f"<li>{item}</li>\n")
+                    formatted_content.append(f"</{list_type}>\n")
+                elif block_type == "table":
+                    headers = block.get("headers", [])
+                    rows = block.get("rows", [])
+
+                    if not isinstance(headers, list) or not isinstance(rows, list):
+                        logger.warning("Invalid table format")
+                        continue
+
+                    # Validate and sanitize table data
+                    headers = [str(h) for h in headers if h is not None]
+                    sanitized_rows = []
+                    for row in rows:
+                        if isinstance(row, list):
+                            sanitized_rows.append(
+                                [str(cell) for cell in row if cell is not None]
                             )
-                            + (
-                                f"<ac:task-due-date>{due_date}</ac:task-due-date>\n"
-                                if due_date
-                                else ""
-                            )
-                            + "</ac:task>\n"
-                        )
-                    formatted_content.append(
-                        "</ac:task-list>\n</ac:structured-macro>\n"
-                    )
-                elif block_type == "image":
-                    source = props.get("source", "")
-                    alt = props.get("alt", "")
-                    caption = props.get("caption", "")
-                    alignment = props.get("alignment", "left")
-                    formatted_content.append(
-                        f'<ac:image ac:align="{alignment}">\n'
-                        f'<ri:attachment ri:filename="{source}"/>\n'
-                        + (f"<ac:alt-text>{alt}</ac:alt-text>\n" if alt else "")
-                        + (f"<ac:caption>{caption}</ac:caption>\n" if caption else "")
-                        + "</ac:image>\n"
-                    )
-                elif block_type == "video":
-                    source = props.get("source", "")
-                    thumbnail = props.get("thumbnail", "")
-                    formatted_content.append(
-                        f'<ac:structured-macro ac:name="video">\n'
-                        f'<ac:parameter ac:name="url">{source}</ac:parameter>\n'
-                        + (
-                            f'<ac:parameter ac:name="thumbnail">{thumbnail}</ac:parameter>\n'
-                            if thumbnail
-                            else ""
-                        )
-                        + "</ac:structured-macro>\n"
-                    )
-                elif block_type == "file":
-                    path = props.get("path", "")
-                    name = props.get("name", "")
-                    formatted_content.append(
-                        f'<ac:structured-macro ac:name="attachments">\n'
-                        f'<ac:parameter ac:name="upload">{path}</ac:parameter>\n'
-                        + (
-                            f'<ac:parameter ac:name="name">{name}</ac:parameter>\n'
-                            if name
-                            else ""
-                        )
-                        + "</ac:structured-macro>\n"
-                    )
-                elif block_type == "mention":
-                    user = props.get("user", "")
-                    formatted_content.append(
-                        f'<ac:link>\n<ri:user ri:username="{user}"/>\n</ac:link>\n'
-                    )
-                elif block_type == "emoji":
-                    name = props.get("name", "")
-                    formatted_content.append(f'<ac:emoticon ac:name="{name}"/>\n')
-                elif block_type == "expand":
-                    title = props.get("title", "")
-                    formatted_content.append(
-                        f'<ac:structured-macro ac:name="expand">\n'
-                        f'<ac:parameter ac:name="title">{title}</ac:parameter>\n'
-                        "<ac:rich-text-body>\n"
-                        f"<p>{content}</p>\n"
-                        "</ac:rich-text-body>\n"
-                        "</ac:structured-macro>\n"
-                    )
-                elif block_type == "divider":
-                    style = props.get("style", "single")
-                    width = props.get("width", "100%")
-                    alignment = props.get("alignment", "left")
-                    formatted_content.append(
-                        f'<hr style="border-style: {style}; width: {width}; text-align: {alignment};"/>\n'
-                    )
+
+                    if not headers or not sanitized_rows:
+                        continue
+
+                    formatted_content.append("<table><tbody>\n")
+                    if headers:
+                        formatted_content.append("<tr>\n")
+                        for header in headers:
+                            formatted_content.append(f"<th>{header}</th>\n")
+                        formatted_content.append("</tr>\n")
+
+                    for row in sanitized_rows:
+                        formatted_content.append("<tr>\n")
+                        for cell in row:
+                            formatted_content.append(f"<td>{cell}</td>\n")
+                        formatted_content.append("</tr>\n")
+                    formatted_content.append("</tbody></table>\n")
                 elif block_type == "code":
                     language = props.get("language", "")
                     formatted_content.append(
                         f'<ac:structured-macro ac:name="code">\n'
                         f'<ac:parameter ac:name="language">{language}</ac:parameter>\n'
-                        "<ac:plain-text-body><![CDATA[\n"
-                        f"{content}\n"
-                        "]]></ac:plain-text-body>\n"
+                        f"<ac:plain-text-body><![CDATA[{content}]]></ac:plain-text-body>\n"
                         "</ac:structured-macro>\n"
                     )
-                elif block_type == "table":
-                    table_props = props or {}
-                    column_widths = table_props.get("column_widths", [])
-
-                    table_start = "<table"
-                    if column_widths:
-                        table_start += ' style="'
-                        table_start += "; ".join(
-                            f"width: {width}" for width in column_widths
-                        )
-                        table_start += '"'
-                    table_start += "><tbody>\n"
-
-                    formatted_content.append(table_start)
-
-                    # Handle headers
-                    headers = block.get("headers", [])
-                    if headers:
-                        header_row = "<tr>"
-                        for header in headers:
-                            if isinstance(header, dict):
-                                header_content = header["content"]
-                                header_props = header.get("properties", {})
-                                style_attrs = []
-                                if "background" in header_props:
-                                    style_attrs.append(
-                                        f"background-color: {header_props['background']}"
-                                    )
-                                if "alignment" in header_props:
-                                    style_attrs.append(
-                                        f"text-align: {header_props['alignment']}"
-                                    )
-                                style_attr = (
-                                    f' style="{"; ".join(style_attrs)}"'
-                                    if style_attrs
-                                    else ""
-                                )
-                                header_row += f"<th{style_attr}>{header_content}</th>"
-                            else:
-                                header_row += f"<th>{header}</th>"
-                        header_row += "</tr>\n"
-                        formatted_content.append(header_row)
-
-                    # Handle rows
-                    for row in block.get("rows", []):
-                        row_content = "<tr>"
-                        for cell in row:
-                            if isinstance(cell, dict):
-                                cell_content = cell["content"]
-                                cell_props = cell.get("properties", {})
-                                style_attrs = []
-                                if "background" in cell_props:
-                                    style_attrs.append(
-                                        f"background-color: {cell_props['background']}"
-                                    )
-                                if "alignment" in cell_props:
-                                    style_attrs.append(
-                                        f"text-align: {cell_props['alignment']}"
-                                    )
-                                style_attr = (
-                                    f' style="{"; ".join(style_attrs)}"'
-                                    if style_attrs
-                                    else ""
-                                )
-                                row_content += f"<td{style_attr}>{cell_content}</td>"
-                            else:
-                                row_content += f"<td>{cell}</td>"
-                        row_content += "</tr>\n"
-                        formatted_content.append(row_content)
-
-                    formatted_content.append("</tbody></table>\n")
-                elif block_type == "panel":
-                    panel_type = props.get("type", "info")
-                    title = props.get("title", "")
-                    collapsible = props.get("collapsible", False)
-                    icon = props.get("icon", "")
-
-                    macro_params = [
-                        f'<ac:parameter ac:name="type">{panel_type}</ac:parameter>'
-                    ]
-                    if title:
-                        macro_params.append(
-                            f'<ac:parameter ac:name="title">{title}</ac:parameter>'
-                        )
-                    if collapsible:
-                        macro_params.append(
-                            '<ac:parameter ac:name="collapsible">true</ac:parameter>'
-                        )
-                    if icon:
-                        macro_params.append(
-                            f'<ac:parameter ac:name="icon">{icon}</ac:parameter>'
-                        )
-
+                elif (
+                    block_type == "note"
+                    or block_type == "info"
+                    or block_type == "warning"
+                ):
+                    macro_type = (
+                        "note"
+                        if block_type == "note"
+                        else ("info" if block_type == "info" else "warning")
+                    )
                     formatted_content.append(
-                        '<ac:structured-macro ac:name="panel">\n'
-                        + "\n".join(macro_params)
-                        + "\n<ac:rich-text-body>\n"
-                        f"<p>{content}</p>\n"
-                        "</ac:rich-text-body>\n"
+                        f'<ac:structured-macro ac:name="{macro_type}">\n'
+                        f"<ac:rich-text-body><p>{content}</p></ac:rich-text-body>\n"
                         "</ac:structured-macro>\n"
                     )
             except Exception as e:
-                logger.error(f"Error formatting block type {block_type}: {e}")
+                logger.error(f"Error formatting block type {block_type}: {str(e)}")
                 continue
 
-        return "\n".join(formatted_content)
+        return "".join(formatted_content)
+
+    def validate_page_title(self, title: str) -> str:
+        """Validate and sanitize page title."""
+        if not title or not isinstance(title, str):
+            raise ValueError("Page title cannot be empty")
+
+        # Remove invalid characters
+        invalid_chars = ["/", "\\", ":", "*", "?", '"', "<", ">", "|", "[", "]"]
+        for char in invalid_chars:
+            title = title.replace(char, "-")
+
+        # Trim whitespace and limit length
+        title = title.strip()
+        if len(title) > 255:
+            title = title[:255].strip()
+
+        return title
 
 
 class TemplateHandler:

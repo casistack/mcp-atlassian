@@ -15,7 +15,7 @@ This file serves as our primary testing tool, simulating exactly how the AI woul
 3. Results must be in the exact format the AI expects
 4. All edge cases must be tested
 5. Real data from Confluence/Jira is used for testing
-6. Make sure you are using the actual method in our code base this way we will know if theres an issue. 
+6. Make sure you are using the actual method in our code base this way we will know if theres an issue in our code base. 
 
 ### Success Criteria
 - Tool functions exactly as documented

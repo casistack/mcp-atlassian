@@ -286,10 +286,9 @@ class ConfluenceFetcher:
                 self.logger.error(f"Page {page_id} not found")
                 return None
 
-            version = current_page.get("version", {}).get("number", 0)
             space_key = current_page.get("space", {}).get("key", "")
 
-            self.logger.debug(f"Updating page {page_id} (version {version})")
+            self.logger.debug(f"Updating page {page_id}")
             self.logger.debug(f"New title: {title}")
             self.logger.debug(f"Content length: {len(body)}")
 
@@ -301,13 +300,12 @@ class ConfluenceFetcher:
                 type=type,
                 representation=representation,
                 minor_edit=minor_edit,
-                version_number=version,
             )
 
             if updated_page and updated_page.get("id"):
                 # Get the updated page to ensure we have the correct version
                 updated_page = self.confluence.get_page_by_id(
-                    updated_page["id"], expand="body.storage,version,space"
+                    page_id=updated_page["id"], expand="body.storage,version,space"
                 )
 
                 # Process the content
@@ -318,14 +316,14 @@ class ConfluenceFetcher:
                     content, space_key
                 )
 
-                # Get the version from the updated page
-                new_version = updated_page.get("version", {}).get("number", version + 1)
+                # Get the new version number from the response
+                version = updated_page.get("version", {}).get("number", 1)
 
                 # Create metadata with updated version
                 metadata = {
                     "page_id": updated_page["id"],
                     "title": updated_page["title"],
-                    "version": new_version,
+                    "version": version,
                     "space_key": space_key,
                     "url": self._get_page_url(space_key, updated_page["id"]),
                 }

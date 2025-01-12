@@ -488,7 +488,7 @@ async def test_confluence_update_page():
                 print("Failed to create test page")
                 return
         except Exception as e:
-            print(f"Error creating test page: {str(e)}")
+            print(f"Error creating test page: {e}")
             return
 
         # Add a pause to allow manual verification
@@ -508,9 +508,8 @@ async def test_confluence_update_page():
                 print("Failed to get current page content")
                 return
 
-            print(
-                f"Current page version: {current_page.get('version', {}).get('number')}"
-            )
+            current_version = current_page.get("version", {}).get("number", 0)
+            print(f"Current page version: {current_version}")
             print(f"Current page title: {current_page.get('title')}")
             print(
                 "Current page content length:",
@@ -526,8 +525,9 @@ async def test_confluence_update_page():
                 page_id=test_page_id,
                 title=new_title,
                 body=current_page["body"]["storage"]["value"],
-                type="page",  # Required parameter
+                type="page",
                 representation="storage",
+                minor_edit=False,
             )
             if page:
                 print(f"Successfully updated page title to: {page.metadata['title']}")
@@ -539,10 +539,10 @@ async def test_confluence_update_page():
                 print(f"Page ID: {test_page_id}")
                 print(f"Attempted new title: {new_title}")
                 print("Content length:", len(current_page["body"]["storage"]["value"]))
-                print("Current version:", current_page.get("version", {}).get("number"))
+                print("Current version:", current_version)
 
         except Exception as e:
-            print(f"Error updating page title: {str(e)}")
+            print(f"Error updating page title: {e}")
             import traceback
 
             print("Full error details:")
@@ -560,9 +560,8 @@ async def test_confluence_update_page():
                 print("Failed to get current page content")
                 return
 
-            print(
-                f"Current page version: {current_page.get('version', {}).get('number')}"
-            )
+            current_version = current_page.get("version", {}).get("number", 0)
+            print(f"Current page version: {current_version}")
             print(f"Current page title: {current_page.get('title')}")
             print(
                 "Current page content length:",
@@ -585,8 +584,9 @@ async def test_confluence_update_page():
                 page_id=test_page_id,
                 title=current_page["title"],  # Keep the current title
                 body=formatted_content,
-                type="page",  # Required parameter
+                type="page",
                 representation="storage",
+                minor_edit=False,
             )
             if page:
                 print("Successfully updated page content with rich formatting")
@@ -598,10 +598,10 @@ async def test_confluence_update_page():
                 print(f"Page ID: {test_page_id}")
                 print(f"Current title: {current_page['title']}")
                 print("New content length:", len(formatted_content))
-                print("Current version:", current_page.get("version", {}).get("number"))
+                print("Current version:", current_version)
 
         except Exception as e:
-            print(f"Error updating page content: {str(e)}")
+            print(f"Error updating page content: {e}")
             import traceback
 
             print("Full error details:")
@@ -622,7 +622,7 @@ async def test_confluence_update_page():
             else:
                 print("Successfully handled non-existent page error")
         except Exception as e:
-            print(f"Expected error for non-existent page: {str(e)}")
+            print(f"Expected error for non-existent page: {e}")
 
         # Add a pause before cleanup
         input("\nPress Enter to proceed with cleanup...")

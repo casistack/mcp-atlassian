@@ -631,3 +631,52 @@ Comments:
         except Exception as e:
             logger.error(f"Error deleting attachment: {e}")
             return False
+
+    def get_templates(self, project_key: Optional[str] = None) -> list[dict]:
+        """Get all available issue templates for a project or global templates.
+
+        Args:
+            project_key: Optional project key to get project-specific templates
+
+        Returns:
+            List of template dictionaries containing id, name, description, and other metadata
+        """
+        try:
+            # Get project templates if project_key is provided
+            templates = []
+
+            if project_key:
+                # Get project-specific templates
+                project_templates = self.jira.get_project_issue_templates(project_key)
+                for template in project_templates:
+                    templates.append(
+                        {
+                            "id": template["id"],
+                            "name": template["name"],
+                            "description": template.get("description", ""),
+                            "type": "project",
+                            "project_key": project_key,
+                            "issue_type": template.get("issueType", {}).get("name"),
+                            "fields": template.get("fields", {}),
+                        }
+                    )
+
+            # Get global templates
+            global_templates = self.jira.get_global_issue_templates()
+            for template in global_templates:
+                templates.append(
+                    {
+                        "id": template["id"],
+                        "name": template["name"],
+                        "description": template.get("description", ""),
+                        "type": "global",
+                        "issue_type": template.get("issueType", {}).get("name"),
+                        "fields": template.get("fields", {}),
+                    }
+                )
+
+            return templates
+
+        except Exception as e:
+            logger.error(f"Error fetching Jira templates: {e}")
+            return []

@@ -813,3 +813,67 @@ class ConfluenceFetcher:
         except Exception as e:
             logger.error(f"Error deleting page: {e}")
             return False
+
+    def get_templates(self, space_key: Optional[str] = None) -> list[dict]:
+        """Get all available templates for a space or global templates.
+
+        Args:
+            space_key: Optional space key to get space-specific templates
+
+        Returns:
+            List of template dictionaries containing id, name, description, and other metadata
+        """
+        try:
+            templates = []
+
+            # Get blueprint templates
+            blueprint_response = (
+                self.confluence.get_blueprint_templates(space_key) if space_key else {}
+            )
+            logger.debug(f"Blueprint response: {blueprint_response}")
+
+            # Handle blueprints from the response
+            blueprints = blueprint_response.get("blueprints", [])
+            for blueprint in blueprints:
+                templates.append(
+                    {
+                        "id": blueprint.get("blueprintModuleCompleteKey", ""),
+                        "name": blueprint.get("name", ""),
+                        "description": blueprint.get("description", ""),
+                        "type": "blueprint",
+                        "space_key": space_key if space_key else "global",
+                        "labels": blueprint.get("labels", []),
+                        "template_type": "blueprint",
+                    }
+                )
+
+            # Get custom templates
+            if space_key:
+                custom_response = self.confluence.get_content(
+                    space_key=space_key, type="template", expand="body.storage"
+                )
+                logger.debug(f"Custom templates response: {custom_response}")
+
+                custom_templates = custom_response.get("results", [])
+                for template in custom_templates:
+                    templates.append(
+                        {
+                            "id": template.get("id", ""),
+                            "name": template.get("title", ""),
+                            "description": template.get("description", ""),
+                            "type": "custom",
+                            "space_key": space_key,
+                            "content": template.get("body", {})
+                            .get("storage", {})
+                            .get("value", ""),
+                            "template_type": "custom",
+                        }
+                    )
+
+            logger.debug(f"Total templates found: {len(templates)}")
+            return templates
+
+        except Exception as e:
+            logger.error(f"Error fetching Confluence templates: {e}")
+            logger.debug("Exception details:", exc_info=True)
+            return []

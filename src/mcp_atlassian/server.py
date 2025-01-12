@@ -921,13 +921,15 @@ async def call_tool(name: str, arguments: Any) -> Sequence[TextContent]:
             return [TextContent(type="text", text=json.dumps(project_issues, indent=2))]
 
         elif name == "get_confluence_templates":
-            templates = TemplateHandler.get_confluence_templates(
-                confluence_fetcher.confluence
+            templates = confluence_fetcher.get_templates(
+                space_key=arguments.get("space_key")
             )
             return [TextContent(type="text", text=json.dumps(templates, indent=2))]
 
         elif name == "get_jira_templates":
-            templates = TemplateHandler.get_jira_templates(jira_fetcher.jira)
+            templates = jira_fetcher.get_templates(
+                project_key=arguments.get("project_key")
+            )
             return [TextContent(type="text", text=json.dumps(templates, indent=2))]
 
         elif name == "create_from_confluence_template":

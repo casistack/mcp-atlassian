@@ -697,43 +697,90 @@ Description:
             List of template dictionaries containing id, name, description, and other metadata
         """
         try:
-            # Get project templates if project_key is provided
             templates = []
+            logger.debug("Starting get_templates()")
 
             if project_key:
-                # Get project-specific templates
-                project_templates = self.jira.get_project_issue_templates(project_key)
-                for template in project_templates:
-                    templates.append(
-                        {
-                            "id": template["id"],
-                            "name": template["name"],
-                            "description": template.get("description", ""),
-                            "type": "project",
-                            "project_key": project_key,
-                            "issue_type": template.get("issueType", {}).get("name"),
-                            "fields": template.get("fields", {}),
-                        }
+                logger.debug(f"Getting project templates for {project_key}")
+                try:
+                    # Get project issue types and fields using createmeta
+                    logger.debug(f"Calling createmeta for project {project_key}")
+                    create_meta = self.jira.createmeta(
+                        projectKeys=project_key, expand="projects.issuetypes.fields"
                     )
+                    logger.debug(f"Raw createmeta response: {create_meta}")
 
-            # Get global templates
-            global_templates = self.jira.get_global_issue_templates()
-            for template in global_templates:
-                templates.append(
-                    {
-                        "id": template["id"],
-                        "name": template["name"],
-                        "description": template.get("description", ""),
-                        "type": "global",
-                        "issue_type": template.get("issueType", {}).get("name"),
-                        "fields": template.get("fields", {}),
-                    }
-                )
+                    if not create_meta.get("projects"):
+                        logger.debug(
+                            f"No projects found in createmeta response for {project_key}"
+                        )
+                    else:
+                        project = create_meta["projects"][0]
+                        logger.debug(
+                            f"Found project: {project.get('key')} with {len(project.get('issuetypes', []))} issue types"
+                        )
 
+                        for issue_type in project.get("issuetypes", []):
+                            logger.debug(
+                                f"Processing issue type: {issue_type.get('name')}"
+                            )
+                            templates.append(
+                                {
+                                    "id": issue_type["id"],
+                                    "name": issue_type["name"],
+                                    "description": issue_type.get("description", ""),
+                                    "type": "project",
+                                    "project_key": project_key,
+                                    "issue_type": issue_type["name"],
+                                    "fields": issue_type.get("fields", {}),
+                                }
+                            )
+                except Exception as e:
+                    logger.error(f"Error getting project templates: {str(e)}")
+                    logger.debug("Exception details:", exc_info=True)
+            else:
+                # Get global issue types
+                logger.debug("Getting global templates")
+                try:
+                    logger.debug("Calling issue_types()")
+                    issue_types = self.jira.issue_types()
+                    logger.debug(f"Raw issue types response: {issue_types}")
+
+                    if not issue_types:
+                        logger.debug("No issue types found in response")
+                    else:
+                        logger.debug(f"Found {len(issue_types)} issue types")
+
+                        for issue_type in issue_types:
+                            logger.debug(
+                                f"Processing issue type: {issue_type.get('name')}"
+                            )
+                            templates.append(
+                                {
+                                    "id": issue_type["id"],
+                                    "name": issue_type["name"],
+                                    "description": issue_type.get("description", ""),
+                                    "type": "global",
+                                    "issue_type": issue_type["name"],
+                                    "fields": {},  # Global templates don't have pre-filled fields
+                                }
+                            )
+                except Exception as e:
+                    logger.error(f"Error getting global templates: {str(e)}")
+                    logger.debug("Exception details:", exc_info=True)
+
+            logger.debug(f"Returning {len(templates)} templates")
+            if templates:
+                logger.debug("Template names found:")
+                for t in templates:
+                    logger.debug(f"- {t['name']} ({t['type']})")
+            else:
+                logger.debug("No templates found")
             return templates
 
         except Exception as e:
-            logger.error(f"Error fetching Jira templates: {e}")
+            logger.error(f"Error in get_templates: {str(e)}")
+            logger.debug("Exception details:", exc_info=True)
             return []
 
     def delete_issue(self, issue_key: str) -> bool:

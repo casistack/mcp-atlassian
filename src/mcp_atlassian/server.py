@@ -1125,47 +1125,43 @@ Content Preview:
             return [TextContent(type="text", text=json.dumps(templates, indent=2))]
 
         elif name == "create_from_confluence_template":
-            content = TemplateHandler.apply_confluence_template(
-                confluence_fetcher.confluence,
-                template_id=arguments["template_id"],
+            template_handler = TemplateHandler()
+            result = template_handler.create_from_template(
                 space_key=arguments["space_key"],
+                template_id=arguments["template_id"],
                 title=arguments["title"],
                 template_parameters=arguments.get("template_parameters"),
             )
 
-            if content:
-                # Create the page with template content
-                doc = confluence_fetcher.create_page(
-                    space_key=arguments["space_key"],
-                    title=arguments["title"],
-                    body=content,
-                    representation="storage",
-                )
+            if result and "error" not in result:
+                return [
+                    TextContent(
+                        type="text",
+                        text=json.dumps(
+                            {
+                                "success": True,
+                                "page_id": result["page_id"],
+                                "title": result["title"],
+                                "url": result["url"],
+                                "content": result.get("content", ""),
+                            },
+                            indent=2,
+                        ),
+                    )
+                ]
 
-                if doc:
-                    return [
-                        TextContent(
-                            type="text",
-                            text=json.dumps(
-                                {
-                                    "success": True,
-                                    "page_id": doc.metadata["page_id"],
-                                    "title": doc.metadata["title"],
-                                    "url": doc.metadata["url"],
-                                    "content": doc.page_content,
-                                },
-                                indent=2,
-                            ),
-                        )
-                    ]
-
+            error_msg = (
+                result.get("error", "Failed to create page from template")
+                if result
+                else "Failed to create page from template"
+            )
             return [
                 TextContent(
                     type="text",
                     text=json.dumps(
                         {
                             "success": False,
-                            "error": "Failed to create page from template",
+                            "error": error_msg,
                         }
                     ),
                 )

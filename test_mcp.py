@@ -238,130 +238,83 @@ async def test_unified_search():
         print(traceback.format_exc())
 
 
-async def test_update_jira_issue():
-    """Test updating an existing Jira issue with new values."""
-    test_issue_key = None
+async def test_get_confluence_templates():
+    """Test getting Confluence templates."""
+    print("\n=== Testing Get Confluence Templates ===")
+
+    # Test Case 1: Get all templates
+    print("\n1. Testing get all templates...")
+    result = await call_tool("get_confluence_templates", {})
+    formatted_result = format_tool_result(result)
+    print(
+        f"All templates: {json.dumps(formatted_result, indent=2) if formatted_result else 'No templates found'}"
+    )
+
+    # Test Case 2: Get space-specific templates
+    print("\n2. Testing space-specific templates...")
+    result = await call_tool("get_confluence_templates", {"space_key": "IS"})
+    formatted_result = format_tool_result(result)
+    print(
+        f"Space templates: {json.dumps(formatted_result, indent=2) if formatted_result else 'No templates found'}"
+    )
+
+    # Test Case 3: Test with non-existent space
+    print("\n3. Testing with non-existent space...")
+    result = await call_tool("get_confluence_templates", {"space_key": "NONEXISTENT"})
+    formatted_result = format_tool_result(result)
+    print(
+        f"Non-existent space templates: {json.dumps(formatted_result, indent=2) if formatted_result else 'No templates found'}"
+    )
+
+
+async def test_get_jira_templates():
+    """Test getting Jira templates."""
+    print("\n=== Testing Get Jira Templates ===")
+
     try:
-        if not validate_config():
-            print("ERROR: Configuration validation failed")
-            return
+        # Test Case 1: Get all templates
+        print("\n1. Testing get all templates...")
+        try:
+            result = await call_tool("get_jira_templates", {})
+            formatted_result = format_tool_result(result)
+            print(
+                f"All templates: {json.dumps(formatted_result, indent=2) if formatted_result else 'No templates found'}"
+            )
+        except Exception as e:
+            print(f"Error getting all templates: {str(e)}")
+            import traceback
 
-        print("\n=== Testing Update Jira Issue ===")
+            print(traceback.format_exc())
 
-        # Create a test issue
-        print("\nCreating test issue...")
-        test_issue_key = await create_test_issue()
-        if not test_issue_key:
-            print("ERROR: Failed to create test issue")
-            return
+        # Test Case 2: Get project-specific templates
+        print("\n2. Testing project-specific templates...")
+        try:
+            result = await call_tool("get_jira_templates", {"project_key": "KAN"})
+            formatted_result = format_tool_result(result)
+            print(
+                f"Project templates: {json.dumps(formatted_result, indent=2) if formatted_result else 'No templates found'}"
+            )
+        except Exception as e:
+            print(f"Error getting project templates: {str(e)}")
+            import traceback
 
-        print(f"Created test issue: {test_issue_key}")
+            print(traceback.format_exc())
 
-        # First, verify the tool is available
-        tools = await list_tools()
-        if not any(tool.name == "update_jira_issue" for tool in tools):
-            print("ERROR: update_jira_issue tool not found in available tools")
-            return
-
-        # Test Case 1: Update basic fields
-        print("\n1. Testing update of basic fields...")
+        # Test Case 3: Test with non-existent project
+        print("\n3. Testing with non-existent project...")
         try:
             result = await call_tool(
-                "update_jira_issue",
-                {
-                    "issue_key": test_issue_key,
-                    "summary": "Updated Test Issue",
-                    "description": "This is an updated test issue description",
-                    "priority": "High",
-                    "status": None,
-                    "assignee": None,
-                    "labels": None,
-                    "custom_fields": None,
-                },
+                "get_jira_templates", {"project_key": "NONEXISTENT"}
             )
             formatted_result = format_tool_result(result)
             print(
-                json.dumps(formatted_result, indent=2)
-                if formatted_result
-                else "No results"
+                f"Non-existent project templates: {json.dumps(formatted_result, indent=2) if formatted_result else 'No templates found'}"
             )
         except Exception as e:
-            print(f"Error in basic field update: {str(e)}")
+            print(f"Error getting templates for non-existent project: {str(e)}")
+            import traceback
 
-        # Test Case 2: Update status and assignee
-        print("\n2. Testing status and assignee update...")
-        try:
-            result = await call_tool(
-                "update_jira_issue",
-                {
-                    "issue_key": test_issue_key,
-                    "status": "In Progress",
-                    "assignee": None,  # Set to None since we don't have a test user
-                    "summary": None,
-                    "description": None,
-                    "priority": None,
-                    "labels": None,
-                    "custom_fields": None,
-                },
-            )
-            formatted_result = format_tool_result(result)
-            print(
-                json.dumps(formatted_result, indent=2)
-                if formatted_result
-                else "No results"
-            )
-        except Exception as e:
-            print(f"Error in status/assignee update: {str(e)}")
-
-        # Test Case 3: Update labels and custom fields
-        print("\n3. Testing labels and custom fields update...")
-        try:
-            result = await call_tool(
-                "update_jira_issue",
-                {
-                    "issue_key": test_issue_key,
-                    "labels": ["test", "automated", "updated"],
-                    "custom_fields": None,  # Remove custom fields for now
-                    "summary": None,
-                    "description": None,
-                    "status": None,
-                    "priority": None,
-                    "assignee": None,
-                },
-            )
-            formatted_result = format_tool_result(result)
-            print(
-                json.dumps(formatted_result, indent=2)
-                if formatted_result
-                else "No results"
-            )
-        except Exception as e:
-            print(f"Error in labels/custom fields update: {str(e)}")
-
-        # Test Case 4: Update non-existent issue
-        print("\n4. Testing update of non-existent issue...")
-        try:
-            result = await call_tool(
-                "update_jira_issue",
-                {
-                    "issue_key": "INVALID-999",
-                    "summary": "This should fail",
-                    "description": None,
-                    "status": None,
-                    "priority": None,
-                    "assignee": None,
-                    "labels": None,
-                    "custom_fields": None,
-                },
-            )
-            formatted_result = format_tool_result(result)
-            print(
-                json.dumps(formatted_result, indent=2)
-                if formatted_result
-                else "No results"
-            )
-        except Exception as e:
-            print(f"Error in non-existent issue update: {str(e)}")
+            print(traceback.format_exc())
 
     except Exception as e:
         print(f"ERROR: Error during test execution: {str(e)}")
@@ -369,135 +322,121 @@ async def test_update_jira_issue():
 
         print("\nFull error details:")
         print(traceback.format_exc())
-    finally:
-        # Clean up test issue
-        if test_issue_key:
-            print(f"\nCleaning up test issue {test_issue_key}...")
-            await cleanup_test_issue(test_issue_key)
 
 
-async def test_add_jira_comment():
-    """Test adding comments to a Jira issue."""
-    test_issue_key = None
+async def test_create_from_confluence_template():
+    """Test creating a page from a Confluence template."""
+    print("\n=== Testing Create From Confluence Template ===")
+
+    # First, get available templates to use for testing
+    print("\n1. Getting available templates...")
     try:
-        if not validate_config():
-            print("ERROR: Configuration validation failed")
+        result = await call_tool("get_confluence_templates", {"space_key": "IS"})
+        templates = format_tool_result(result)
+        print(f"Available templates: {json.dumps(templates, indent=2)}")
+
+        if not templates:
+            print("No templates found for testing")
             return
 
-        print("\n=== Testing Add Jira Comment ===")
+        # Use the first available template
+        template = templates[0]
+        template_id = template["id"]
 
-        # Create a test issue
-        print("\nCreating test issue...")
-        test_issue_key = await create_test_issue()
-        if not test_issue_key:
-            print("ERROR: Failed to create test issue")
-            return
-
-        print(f"Created test issue: {test_issue_key}")
-
-        # First, verify the tool is available
-        tools = await list_tools()
-        if not any(tool.name == "add_jira_comment" for tool in tools):
-            print("ERROR: add_jira_comment tool not found in available tools")
-            return
-
-        # Test Case 1: Add basic comment
-        print("\n1. Testing adding basic comment...")
+        # Test Case 1: Basic template usage
+        print("\n2. Testing basic template usage...")
         try:
             result = await call_tool(
-                "add_jira_comment",
+                "create_from_confluence_template",
                 {
-                    "issue_key": test_issue_key,
-                    "content": "This is a test comment",
-                    "format_type": "plain_text",
-                    "format_options": {},
+                    "template_id": template_id,
+                    "space_key": "IS",
+                    "title": "Test Template Page",
+                    "template_parameters": {
+                        "summary": "Test summary",
+                        "description": "Test description",
+                    },
                 },
             )
             formatted_result = format_tool_result(result)
             print(
-                json.dumps(formatted_result, indent=2)
-                if formatted_result
-                else "No results"
+                f"Create from template result: {json.dumps(formatted_result, indent=2)}"
             )
-        except Exception as e:
-            print(f"Error in adding basic comment: {str(e)}")
 
-        # Test Case 2: Add formatted comment with markdown
-        print("\n2. Testing adding formatted comment...")
+            # If page was created successfully, clean it up
+            if formatted_result and formatted_result.get("success"):
+                page_id = formatted_result.get("page_id")
+                if page_id:
+                    print(f"\nCleaning up test page {page_id}...")
+                    cleanup_result = await call_tool(
+                        "delete_confluence_page", {"page_id": page_id}
+                    )
+                    print("Cleanup complete")
+
+        except Exception as e:
+            print(f"Error in basic template usage: {str(e)}")
+
+        # Test Case 2: Template with invalid parameters
+        print("\n3. Testing template with invalid parameters...")
         try:
             result = await call_tool(
-                "add_jira_comment",
+                "create_from_confluence_template",
                 {
-                    "issue_key": test_issue_key,
-                    "content": "# Test Heading\n- Bullet point 1\n- Bullet point 2",
-                    "format_type": "markdown",
-                    "format_options": {"preserve_format": True},
+                    "template_id": template_id,
+                    "space_key": "IS",
+                    "title": "Test Template Page - Invalid Params",
+                    "template_parameters": {
+                        "nonexistent_param": "This parameter doesn't exist"
+                    },
                 },
             )
             formatted_result = format_tool_result(result)
             print(
-                json.dumps(formatted_result, indent=2)
-                if formatted_result
-                else "No results"
+                f"Invalid parameters result: {json.dumps(formatted_result, indent=2)}"
             )
-        except Exception as e:
-            print(f"Error in adding formatted comment: {str(e)}")
 
-        # Test Case 3: Add comment with mentions and links
-        print("\n3. Testing comment with mentions and links...")
+            # Clean up if page was created
+            if formatted_result and formatted_result.get("success"):
+                page_id = formatted_result.get("page_id")
+                if page_id:
+                    print(f"\nCleaning up test page {page_id}...")
+                    cleanup_result = await call_tool(
+                        "delete_confluence_page", {"page_id": page_id}
+                    )
+                    print("Cleanup complete")
+
+        except Exception as e:
+            print(f"Error in invalid parameters test: {str(e)}")
+
+        # Test Case 3: Invalid template ID
+        print("\n4. Testing with invalid template ID...")
         try:
             result = await call_tool(
-                "add_jira_comment",
+                "create_from_confluence_template",
                 {
-                    "issue_key": test_issue_key,
-                    "content": "Please check this issue.",  # Removed @testuser mention
-                    "format_type": "jira",
-                    "format_options": {"process_mentions": True},
+                    "template_id": "invalid_template_id",
+                    "space_key": "IS",
+                    "title": "Test Template Page - Invalid Template",
                 },
             )
             formatted_result = format_tool_result(result)
             print(
-                json.dumps(formatted_result, indent=2)
-                if formatted_result
-                else "No results"
+                f"Invalid template ID result: {json.dumps(formatted_result, indent=2)}"
             )
-        except Exception as e:
-            print(f"Error in adding comment with mentions: {str(e)}")
 
-        # Test Case 4: Add comment to non-existent issue
-        print("\n4. Testing comment on non-existent issue...")
-        try:
-            result = await call_tool(
-                "add_jira_comment",
-                {
-                    "issue_key": "INVALID-999",
-                    "content": "This should fail",
-                    "format_type": "plain_text",
-                    "format_options": {},
-                },
-            )
-            formatted_result = format_tool_result(result)
-            print(
-                json.dumps(formatted_result, indent=2)
-                if formatted_result
-                else "No results"
-            )
         except Exception as e:
-            print(f"Error in adding comment to non-existent issue: {str(e)}")
+            print(f"Error in invalid template ID test: {str(e)}")
 
     except Exception as e:
-        print(f"ERROR: Error during test execution: {str(e)}")
+        print(f"Error getting templates: {str(e)}")
         import traceback
 
         print("\nFull error details:")
         print(traceback.format_exc())
-    finally:
-        # Clean up test issue
-        if test_issue_key:
-            print(f"\nCleaning up test issue {test_issue_key}...")
-            await cleanup_test_issue(test_issue_key)
 
 
 if __name__ == "__main__":
-    asyncio.run(test_update_jira_issue())
-    asyncio.run(test_add_jira_comment())
+    asyncio.run(test_unified_search())
+    asyncio.run(test_get_confluence_templates())
+    asyncio.run(test_get_jira_templates())
+    asyncio.run(test_create_from_confluence_template())

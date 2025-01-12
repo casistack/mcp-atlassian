@@ -1005,7 +1005,7 @@ async def call_tool(name: str, arguments: Any) -> Sequence[TextContent]:
             limit = arguments.get("limit", 10)
 
             if not query:
-                return [TextContent(text="Error: Query is required")]
+                return [TextContent(type="text", text="Error: Query is required")]
 
             # Extract title from CQL if provided
             title = query
@@ -1017,7 +1017,9 @@ async def call_tool(name: str, arguments: Any) -> Sequence[TextContent]:
             results = confluence_fetcher.search_pages(title, limit)
 
             if not results:
-                return [TextContent(text="No pages found matching the query")]
+                return [
+                    TextContent(type="text", text="No pages found matching the query")
+                ]
 
             response_texts = []
             for doc in results:
@@ -1031,7 +1033,7 @@ Author: {metadata['author_name']}
 Content Preview:
 {doc.page_content[:500]}...
 """
-                response_texts.append(TextContent(text=content))
+                response_texts.append(TextContent(type="text", text=content))
 
             return response_texts
 

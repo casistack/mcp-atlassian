@@ -138,26 +138,7 @@ async def list_tools() -> list[Tool]:
     tools = [
         Tool(
             name="unified_search",
-            description="""
-### 🔍 Cross-Platform Search
-
-Search across both Confluence and Jira platforms in a single query.
-
-#### Features:
-- Full-text search across all content
-- Filter by platform (Confluence, Jira)
-- Smart result ranking
-- Content excerpts with highlights
-
-#### Example:
-```json
-{
-    "query": "deployment process",
-    "platforms": ["confluence", "jira"],
-    "limit": 5
-}
-```
-            """,
+            description="Cross-Platform Search Search across both Confluence and Jira platforms in a single query.",
             category=TOOL_CATEGORIES["search"],
             inputSchema={
                 "type": "object",
@@ -190,31 +171,7 @@ Search across both Confluence and Jira platforms in a single query.
         ),
         Tool(
             name="confluence_search",
-            description="""
-### 📝 Confluence Search
-
-Search Confluence content using CQL (Confluence Query Language).
-
-#### Features:
-- Advanced CQL query support
-- Space-specific search
-- Content type filtering
-- Metadata inclusion
-
-#### Example:
-```json
-{
-    "query": "type=page AND space=DEV AND text~'deployment'",
-    "limit": 5
-}
-```
-
-#### Common CQL Operators:
-- `AND`, `OR`, `NOT`
-- `~` for text search
-- `=` for exact match
-- `IN` for multiple values
-            """,
+            description="Search Confluence content using CQL (Confluence Query Language) with support for advanced queries and content filtering.",
             category=TOOL_CATEGORIES["confluence"],
             inputSchema={
                 "type": "object",
@@ -242,32 +199,7 @@ Search Confluence content using CQL (Confluence Query Language).
         ),
         Tool(
             name="confluence_get_page",
-            description="""
-### 📄 Get Confluence Page
-
-Retrieve content and metadata of a specific Confluence page.
-
-#### Features:
-- Full page content retrieval
-- Optional metadata inclusion
-- Version information
-- Author and modification details
-
-#### Example:
-```json
-{
-    "page_id": "123456",
-    "include_metadata": true
-}
-```
-
-#### Returns:
-- Page content in storage format
-- Last modified date
-- Version number
-- Author information
-- Labels and permissions
-            """,
+            description="Retrieve content and metadata of a specific Confluence page.",
             category=TOOL_CATEGORIES["confluence"],
             inputSchema={
                 "type": "object",
@@ -290,31 +222,7 @@ Retrieve content and metadata of a specific Confluence page.
         ),
         Tool(
             name="confluence_get_comments",
-            description="""
-### 💬 Get Confluence Comments
-
-Retrieve all comments for a specific Confluence page.
-
-#### Features:
-- Full comment content
-- Author information
-- Timestamps
-- Nested replies
-- Formatting preserved
-
-#### Example:
-```json
-{
-    "page_id": "123456"
-}
-```
-
-#### Returns:
-- Comment content
-- Author details
-- Creation timestamp
-- Reply structure
-            """,
+            description="Retrieve all comments for a specific Confluence page, including author information and timestamps.",
             category=TOOL_CATEGORIES["confluence"],
             inputSchema={
                 "type": "object",
@@ -332,31 +240,7 @@ Retrieve all comments for a specific Confluence page.
         ),
         Tool(
             name="jira_get_issue",
-            description="""
-### 🎯 Get Jira Issue
-
-Retrieve detailed information about a specific Jira issue.
-
-#### Features:
-- Full issue details
-- Customizable field expansion
-- Rich formatting support
-- Attachment information
-
-#### Example:
-```json
-{
-    "issue_key": "PROJ-123",
-    "expand": "renderedFields,names,schema,transitions,operations,editmeta,changelog"
-}
-```
-
-#### Common Expand Options:
-- `renderedFields`: Get formatted field values
-- `transitions`: Include available status transitions
-- `changelog`: Include issue history
-- `comments`: Include all comments
-            """,
+            description="Retrieve detailed information about a specific Jira issue, including fields, transitions, and history.",
             category=TOOL_CATEGORIES["jira"],
             inputSchema={
                 "type": "object",
@@ -382,33 +266,7 @@ Retrieve detailed information about a specific Jira issue.
         ),
         Tool(
             name="jira_search",
-            description="""
-### 🔎 Jira Search
-
-Search Jira issues using JQL (Jira Query Language).
-
-#### Features:
-- Advanced JQL query support
-- Custom field selection
-- Result limiting
-- Rich metadata
-
-#### Example:
-```json
-{
-    "jql": "project = PROJ AND status = 'In Progress' ORDER BY priority DESC",
-    "fields": "summary,description,status,priority",
-    "limit": 10
-}
-```
-
-#### Common JQL Operators:
-- `=`, `!=`, `>`, `>=`, `<`, `<=`
-- `IN`, `NOT IN`
-- `~` for contains
-- `IS NULL`, `IS NOT NULL`
-- `ORDER BY`, `DESC`, `ASC`
-            """,
+            description="Search Jira issues using JQL (Jira Query Language) with support for custom fields and sorting.",
             category=TOOL_CATEGORIES["jira"],
             inputSchema={
                 "type": "object",
@@ -438,33 +296,7 @@ Search Jira issues using JQL (Jira Query Language).
         ),
         Tool(
             name="jira_get_project_issues",
-            description="""
-### 📊 Get Project Issues
-
-Retrieve all issues from a specific Jira project with pagination support.
-
-#### Features:
-- Project-wide issue listing
-- Pagination support
-- Basic issue details
-- Sorting options
-
-#### Example:
-```json
-{
-    "project_key": "PROJ",
-    "limit": 20
-}
-```
-
-#### Returns:
-- Issue key
-- Title
-- Type
-- Status
-- Creation date
-- Issue URL
-            """,
+            description="Retrieve all issues from a specific Jira project with pagination support.",
             category=TOOL_CATEGORIES["jira"],
             inputSchema={
                 "type": "object",
@@ -489,24 +321,7 @@ Retrieve all issues from a specific Jira project with pagination support.
         ),
         Tool(
             name="get_confluence_templates",
-            description="""
-### 📑 List Confluence Templates
-
-Get all available Confluence templates, including blueprints and custom templates.
-
-#### Features:
-- Blueprint templates
-- Custom templates
-- Space templates
-- Template metadata
-
-#### Returns:
-- Template ID
-- Name
-- Description
-- Space key (if space-specific)
-- Labels
-            """,
+            description="Get all available Confluence templates, including blueprints and custom templates.",
             category=TOOL_CATEGORIES["templates"],
             inputSchema={
                 "type": "object",
@@ -521,25 +336,7 @@ Get all available Confluence templates, including blueprints and custom template
         ),
         Tool(
             name="get_jira_templates",
-            description="""
-### 📝 List Jira Templates
-
-Get all available Jira issue templates.
-
-#### Features:
-- Project templates
-- Shared templates
-- Custom field defaults
-- Template metadata
-
-#### Returns:
-- Template ID
-- Name
-- Description
-- Project key (if project-specific)
-- Issue type
-- Field mappings
-            """,
+            description="Get all available Jira issue templates with their metadata and field mappings.",
             category=TOOL_CATEGORIES["templates"],
             inputSchema={
                 "type": "object",
@@ -554,38 +351,7 @@ Get all available Jira issue templates.
         ),
         Tool(
             name="create_from_confluence_template",
-            description="""
-### 📋 Create from Confluence Template
-
-Create a new Confluence page using a predefined template.
-
-#### Features:
-- Template-based page creation
-- Variable substitution
-- Rich content formatting
-- Automatic space organization
-
-#### Example:
-```json
-{
-    "template_id": "com.atlassian.confluence.plugins.confluence-create-content-plugin:create-blank-page",
-    "space_key": "TEAM",
-    "title": "Project Requirements",
-    "template_parameters": {
-        "project_name": "MCP Integration",
-        "team": "Backend",
-        "start_date": "2024-01-15"
-    }
-}
-```
-
-#### Template Types:
-- Blank pages
-- Meeting notes
-- Product requirements
-- Decision documents
-- How-to guides
-            """,
+            description="Create a new Confluence page using a predefined template with variable substitution.",
             category=TOOL_CATEGORIES["templates"],
             inputSchema={
                 "type": "object",
@@ -618,37 +384,7 @@ Create a new Confluence page using a predefined template.
         ),
         Tool(
             name="create_from_jira_template",
-            description="""
-### ✨ Create Jira Issue from Template
-
-Create a new Jira issue using a predefined template.
-
-#### Features:
-- Template-based issue creation
-- Variable substitution
-- Custom field support
-- Automatic assignments
-
-#### Example:
-```json
-{
-    "template_id": "bug-report",
-    "project_key": "PROJ",
-    "summary": "Critical: Database Connection Error",
-    "template_parameters": {
-        "severity": "Critical",
-        "environment": "Production",
-        "affected_version": "2.1.0"
-    }
-}
-```
-
-#### Template Parameters:
-- Project-specific fields
-- Custom fields
-- Dynamic variables
-- Assignee rules
-            """,
+            description="Create a new Jira issue using a predefined template with custom field support.",
             category=TOOL_CATEGORIES["templates"],
             inputSchema={
                 "type": "object",
@@ -681,30 +417,7 @@ Create a new Jira issue using a predefined template.
         ),
         Tool(
             name="get_jira_issue_transitions",
-            description="""
-### 🔄 Get Issue Transitions
-
-Get all available status transitions for a Jira issue.
-
-#### Features:
-- Current status
-- Available transitions
-- Required fields
-- Transition rules
-
-#### Example:
-```json
-{
-    "issue_key": "PROJ-123"
-}
-```
-
-#### Returns:
-- Transition ID
-- Target status
-- Screen requirements
-- Validation rules
-            """,
+            description="Get all available status transitions for a Jira issue.",
             category=TOOL_CATEGORIES["jira"],
             inputSchema={
                 "type": "object",
@@ -725,32 +438,7 @@ Get all available status transitions for a Jira issue.
         ),
         Tool(
             name="update_jira_section",
-            description="""
-### ✏️ Update Issue Section
-
-Update a specific section of a Jira issue description by heading.
-
-#### Features:
-- Section-based updates
-- Markdown support
-- Heading preservation
-- Content formatting
-
-#### Example:
-```json
-{
-    "issue_key": "PROJ-123",
-    "heading": "Technical Details",
-    "content": "Updated technical specifications and implementation notes..."
-}
-```
-
-#### Usage Notes:
-- Preserves other sections
-- Maintains formatting
-- Creates section if not found
-- Supports rich text
-            """,
+            description="Update a specific section of a Jira issue description by heading.",
             category=TOOL_CATEGORIES["jira"],
             inputSchema={
                 "type": "object",
@@ -779,32 +467,7 @@ Update a specific section of a Jira issue description by heading.
         ),
         Tool(
             name="get_jira_attachments",
-            description="""
-### 📎 Get Issue Attachments
-
-Retrieve all attachments for a specific Jira issue.
-
-#### Features:
-- File metadata
-- Download URLs
-- Creator information
-- Size and type details
-
-#### Example:
-```json
-{
-    "issue_key": "PROJ-123"
-}
-```
-
-#### Returns:
-- File name
-- Content type
-- File size
-- Creation date
-- Creator
-- Download URL
-            """,
+            description="Retrieve all attachments for a specific Jira issue with file metadata.",
             category=TOOL_CATEGORIES["jira"],
             inputSchema={
                 "type": "object",

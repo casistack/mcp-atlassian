@@ -1,184 +1,209 @@
-# AI Test Plan for MCP Confluence Integration
+# MCP Atlassian AI Tools Test Plan
 
-## 1. Document Creation and Basic Structure
-- Create new pages with different content types
-- Add table of contents with custom min/max levels
-- Set initial page status with different colors
-- Create pages with parent/child relationships
-- Test page existence before creation
+## Testing Guidelines
 
-## 2. Section Management
-### 2.1 Section Creation and Modification
-- Add new sections at different levels (h1-h6)
-- Insert sections between existing ones
-- Update section titles
-- Move sections within the document
-- Delete sections while preserving content
+### Test File: test_mcp.py
+This file serves as our primary testing tool, simulating exactly how the AI would interact with our MCP tools.
 
-### 2.2 Section Content Operations
-- Find sections by exact title match
-- Handle missing sections gracefully
-- Create sections if they don't exist
-- Validate section hierarchy
+### Testing Approach
+1. Each test directly calls the actual functions from our codebase
+2. Tests simulate AI's tool usage pattern:
+   - Tool validation
+   - Parameter handling
+   - Response processing
+   - Error handling
+3. Results must be in the exact format the AI expects
+4. All edge cases must be tested
+5. Real data from Confluence/Jira is used for testing
 
-## 3. Advanced Content Formatting
-### 3.1 Text Formatting
-- Add paragraphs with rich text
-- Format text with bold, italic, underline
-- Create bulleted and numbered lists
-- Add nested lists with multiple levels
-- Insert blockquotes
-- Add horizontal rules
+### Success Criteria
+- Tool functions exactly as documented
+- Returns properly formatted data
+- Handles errors gracefully
+- Works with real Atlassian data
+- Matches AI's expected interaction pattern
 
-### 3.2 Code Blocks
-- Insert code blocks with syntax highlighting
-- Add code blocks with titles
-- Support multiple programming languages
-- Update existing code blocks
-- Add inline code snippets
+## Tool Categories
+1. Search Tools
+2. Confluence Tools
+3. Jira Tools
+4. Template Tools
 
-### 3.3 Tables
-- Create tables with headers
-- Update specific cells by row/column
-- Add new rows to existing tables
-- Delete rows from tables
-- Merge cells
-- Format table cells
-- Handle tables with complex content (lists, links)
+## Tools and Test Scenarios
 
-### 3.4 Panels and Callouts
-- Add info panels
-- Create warning panels
-- Insert note panels
-- Add panels with titles
-- Update panel content
-- Change panel types
-- Add expandable panels
+### 1. Search Tools
 
-### 3.5 Status Indicators
-- Add status macro with different colors
-- Update existing status
-- Remove status
-- Position status relative to content
-- Handle multiple status macros
+#### 1.1 unified_search ✅
+- **Description**: Cross-platform search across Confluence and Jira
+- **Status**: TESTED & WORKING
+- **Test Results**:
+  - ✅ Basic search works with proper JSON response
+  - ✅ Platform filtering works (Confluence/Jira)
+  - ✅ Custom limit respected
+  - ✅ Special characters handled correctly
+  - ✅ Empty query handled properly
+  - ✅ Response format matches AI requirements
 
-## 4. Dynamic Content
-### 4.1 Lists
-- Add items to existing lists
-- Create new lists in sections
-- Convert between bullet and numbered lists
-- Handle nested list items
-- Update list items
-- Remove list items
+#### 1.2 confluence_search
+- **Description**: Search Confluence content using CQL
+- **Test Scenarios**:
+  - Search by title
+  - Search with CQL query
+  - Search with limit
+  - Search in specific space
+  - Search with invalid query
 
-### 4.2 Tables
-- Update rows by identifier
-- Add new columns
-- Update multiple cells
-- Sort table content
-- Filter table rows
-- Handle empty cells
+### 2. Confluence Tools
 
-## 5. Special Content Types
-### 5.1 Attachments
-- Upload attachments with metadata
-- Update existing attachments
-- Remove attachments
-- Handle different file types
-- Add attachment thumbnails
+#### 2.1 confluence_get_page
+- **Description**: Get content of a specific Confluence page
+- **Test Scenarios**:
+  - Get page with metadata
+  - Get page without metadata
+  - Get non-existent page
+  - Get page with special characters
 
-### 5.2 Links
-- Add internal page links
-- Create external links
-- Add anchor links
-- Update link text
-- Handle broken links
+#### 2.2 confluence_get_comments
+- **Description**: Get comments for a Confluence page
+- **Test Scenarios**:
+  - Get comments from page with comments
+  - Get comments from page without comments
+  - Get comments from non-existent page
 
-### 5.3 Macros
-- Insert Confluence macros
-- Update macro parameters
-- Remove macros
-- Handle custom macros
-- Test macro rendering
+#### 2.3 confluence_create_page
+- **Description**: Create new Confluence page with rich formatting
+- **Test Scenarios**:
+  - Create basic page with title and text
+  - Create page with rich formatting (headings, lists, tables)
+  - Create page with templates
+  - Create page with parent page
+  - Create page with attachments
 
-## 6. Page Management
-### 6.1 Version Control
-- Update pages with minor edits
-- Handle version conflicts
-- Restore previous versions
-- Compare versions
-- Track changes
+#### 2.4 confluence_update_page
+- **Description**: Update existing Confluence page
+- **Test Scenarios**:
+  - Update page title
+  - Update page content
+  - Update with rich formatting
+  - Update non-existent page
 
-### 6.2 Page Properties
-- Set page properties
-- Update existing properties
-- Remove properties
-- Handle property inheritance
-- Search by properties
+#### 2.5 delete_confluence_page
+- **Description**: Delete a Confluence page
+- **Test Scenarios**:
+  - Delete existing page
+  - Delete non-existent page
+  - Delete page with children
 
-## 7. Error Handling
-- Handle non-existent pages
-- Manage section not found scenarios
-- Handle invalid content types
-- Manage API rate limits
-- Handle concurrent edits
-- Validate input parameters
+### 3. Jira Tools
 
-## 8. Batch Operations
-- Update multiple sections
-- Add content to multiple pages
-- Apply formatting to multiple elements
-- Handle bulk operations efficiently
-- Roll back failed batch operations
+#### 3.1 jira_get_issue
+- **Description**: Get details of a specific Jira issue
+- **Test Scenarios**:
+  - Get basic issue details
+  - Get issue with expanded fields
+  - Get non-existent issue
 
-## 9. Integration Scenarios
-### 9.1 Documentation Tasks
-- Create technical documentation
-- Update API documentation
-- Maintain change logs
-- Create user guides
-- Update release notes
+#### 3.2 jira_search
+- **Description**: Search Jira issues using JQL
+- **Test Scenarios**:
+  - Search with basic JQL
+  - Search with custom fields
+  - Search with limit
+  - Search with invalid JQL
 
-### 9.2 Project Management
-- Create project spaces
-- Maintain team documentation
-- Update status reports
-- Create meeting notes
-- Manage task lists
+#### 3.3 jira_get_project_issues
+- **Description**: Get all issues for a project
+- **Test Scenarios**:
+  - Get issues with default limit
+  - Get issues with custom limit
+  - Get issues from non-existent project
 
-## Test Implementation Priority
-1. Basic page operations (create, read, update)
-2. Section management
-3. Advanced formatting
-4. Dynamic content
-5. Special content types
-6. Error handling
-7. Batch operations
-8. Integration scenarios
+#### 3.4 create_jira_issue
+- **Description**: Create new Jira issue
+- **Test Scenarios**:
+  - Create basic issue
+  - Create issue with custom fields
+  - Create issue with attachments
+  - Create issue with invalid project
 
-## Success Criteria
-- All operations should complete without errors
-- Content should be properly formatted
-- Changes should be immediately visible
-- Version history should be maintained
-- User permissions should be respected
-- Performance should be acceptable
-- Error messages should be clear and actionable
+#### 3.5 update_jira_issue
+- **Description**: Update existing Jira issue
+- **Test Scenarios**:
+  - Update basic fields
+  - Update custom fields
+  - Update status
+  - Update non-existent issue
+
+#### 3.6 add_jira_comment
+- **Description**: Add comment to Jira issue
+- **Test Scenarios**:
+  - Add basic comment
+  - Add formatted comment
+  - Add comment to non-existent issue
+
+### 4. Template Tools
+
+#### 4.1 get_confluence_templates
+- **Description**: Get available Confluence templates
+- **Test Scenarios**:
+  - Get all templates
+  - Get space-specific templates
+  - Get templates from non-existent space
+
+#### 4.2 get_jira_templates
+- **Description**: Get available Jira templates
+- **Test Scenarios**:
+  - Get all templates
+  - Get project-specific templates
+  - Get templates from non-existent project
+
+#### 4.3 create_from_confluence_template
+- **Description**: Create page from Confluence template
+- **Test Scenarios**:
+  - Create with basic template
+  - Create with parameters
+  - Create with invalid template
+
+#### 4.4 create_from_jira_template
+- **Description**: Create issue from Jira template
+- **Test Scenarios**:
+  - Create with basic template
+  - Create with parameters
+  - Create with invalid template
+
+## Test Implementation Plan
+
+1. Each tool will be tested using test_mcp.py as a base
+2. Tests will be organized in separate files under testlive/
+3. Each test will:
+   - Validate configuration
+   - Test the main functionality
+   - Test edge cases
+   - Test error conditions
+   - Clean up test data
 
 ## Test Data Requirements
-- Sample content for each content type
-- Test files for attachments
-- Example code snippets
-- Test images
-- Sample tables and lists
-- Test user credentials
-- Test space and page hierarchies
 
-## Monitoring and Validation
-- Log all API calls
-- Track operation timing
-- Monitor rate limits
-- Validate content structure
-- Check formatting consistency
-- Verify link validity
-- Ensure proper cleanup after tests 
+1. Valid Confluence space and pages
+2. Valid Jira project and issues
+3. Test templates for both platforms
+4. Test attachments
+5. Test user accounts with appropriate permissions
+
+## Error Handling Tests
+
+For each tool, test:
+1. Invalid authentication
+2. Network errors
+3. Permission errors
+4. Rate limiting
+5. Invalid input data
+6. Edge cases (empty/null values)
+
+## Success Criteria
+
+1. All tools function as documented
+2. Error handling works correctly
+3. Rate limiting is respected
+4. Data integrity is maintained
+5. Clean up is successful

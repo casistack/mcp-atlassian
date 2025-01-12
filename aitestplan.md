@@ -15,6 +15,7 @@ This file serves as our primary testing tool, simulating exactly how the AI woul
 3. Results must be in the exact format the AI expects
 4. All edge cases must be tested
 5. Real data from Confluence/Jira is used for testing
+6. Make sure you are using the actual method in our code base this way we will know if theres an issue. 
 
 ### Success Criteria
 - Tool functions exactly as documented
@@ -22,6 +23,7 @@ This file serves as our primary testing tool, simulating exactly how the AI woul
 - Handles errors gracefully
 - Works with real Atlassian data
 - Matches AI's expected interaction pattern
+- once a test passes you can delete the function from test_mcp.py so we dont have a huge file. 
 
 ## Tool Categories
 1. Search Tools
@@ -44,31 +46,54 @@ This file serves as our primary testing tool, simulating exactly how the AI woul
   - ✅ Empty query handled properly
   - ✅ Response format matches AI requirements
 
-#### 1.2 confluence_search
+#### 1.2 confluence_search ✅
 - **Description**: Search Confluence content using CQL
-- **Test Scenarios**:
-  - Search by title
-  - Search with CQL query
-  - Search with limit
-  - Search in specific space
-  - Search with invalid query
+- **Status**: TESTED & WORKING
+- **Test Results**:
+  - ✅ Title search works (found "Project Best Practices")
+  - ✅ CQL query works (space + text search)
+  - ✅ Limit works (tested with limit=2)
+  - ✅ Space-specific search works (IS space)
+  - ✅ Invalid query handled gracefully
+  - ✅ Metadata correctly returned:
+    - Title
+    - Space info
+    - URL
+    - Last Modified
+    - Author
+    - Content preview
+  - ✅ Direct code integration verified
 
 ### 2. Confluence Tools
 
-#### 2.1 confluence_get_page
+#### 2.1 confluence_get_page ✅
 - **Description**: Get content of a specific Confluence page
-- **Test Scenarios**:
-  - Get page with metadata
-  - Get page without metadata
-  - Get non-existent page
-  - Get page with special characters
+- **Status**: TESTED & WORKING
+- **Test Results**:
+  - ✅ Get page with metadata works:
+    - Title
+    - Space info
+    - Version number
+    - Last Modified timestamp
+    - Author information
+  - ✅ Get page content works (without metadata)
+  - ✅ Non-existent page handling works:
+    - Proper error message
+    - No crash on invalid ID
+  - ✅ Special characters handling works
+  - ✅ Direct code integration verified
+  - ✅ Error handling works correctly
 
-#### 2.2 confluence_get_comments
+#### 2.2 confluence_get_comments ✅
 - **Description**: Get comments for a Confluence page
-- **Test Scenarios**:
-  - Get comments from page with comments
-  - Get comments from page without comments
-  - Get comments from non-existent page
+- **Status**: TESTED & WORKING
+- **Test Results**:
+  - ✅ Successfully retrieves comments from existing pages
+  - ✅ Properly handles pages without comments
+  - ✅ Correctly handles non-existent page errors
+  - ✅ Successfully checks for special characters in comments
+  - ✅ Error handling works as expected
+  - ✅ Direct code integration verified
 
 #### 2.3 confluence_create_page
 - **Description**: Create new Confluence page with rich formatting

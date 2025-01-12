@@ -290,9 +290,163 @@ async def test_confluence_search():
         print(traceback.format_exc())
 
 
+async def test_confluence_create_page():
+    """Test Confluence page creation functionality using direct code calls."""
+    try:
+        if not validate_config():
+            print("ERROR: Configuration validation failed")
+            return
+
+        print("\n=== Testing Confluence Create Page ===")
+
+        # Initialize the ConfluenceFetcher and ContentEditor
+        confluence = ConfluenceFetcher()
+        editor = ContentEditor()
+
+        # Test Case 1: Create basic page with title and text
+        print("\n1. Testing basic page creation...")
+        try:
+            title = "Test Page - Basic Content"
+            content = "This is a test page created by the automated test suite."
+            space_key = "IS"  # Using IT Support space
+
+            # Create the page
+            page = confluence.create_page(space_key, title, content)
+            if page:
+                print(f"Successfully created basic page:")
+                print(f"Title: {page.metadata['title']}")
+                print(f"Space: {page.metadata['space_key']}")
+                print(f"ID: {page.metadata['page_id']}")
+                test_page_id = page.metadata["page_id"]  # Save for cleanup
+            else:
+                print("Failed to create basic page")
+        except Exception as e:
+            print(f"Error creating basic page: {str(e)}")
+
+        # Test Case 2: Create page with rich formatting
+        print("\n2. Testing page creation with rich formatting...")
+        try:
+            title = "Test Page - Rich Formatting"
+            content_editor = ContentEditor()
+            rich_editor = content_editor.create_editor()
+
+            # Add formatted content
+            rich_editor.heading("Main Heading", 1)
+            rich_editor.text("This is a test page with rich formatting.")
+            rich_editor.bold("This text should be bold.")
+            rich_editor.italic("This text should be italic.")
+            rich_editor.bullet_list(["Item 1", "Item 2", "Item 3"])
+            rich_editor.table(
+                headers=["Header 1", "Header 2"],
+                rows=[["Cell 1", "Cell 2"], ["Cell 3", "Cell 4"]],
+            )
+            rich_editor.status("In Progress", "blue")
+            rich_editor.code("print('Hello, World!')", "python")
+
+            # Convert content to storage format
+            formatted_content = content_editor.create_rich_content(
+                rich_editor.get_content()
+            )
+
+            # Create the page using the formatted content
+            page = confluence.create_page(
+                space_key=space_key,
+                title=title,
+                body=formatted_content,
+                representation="storage",
+            )
+            if page:
+                print(f"Successfully created rich formatted page:")
+                print(f"Title: {page.metadata['title']}")
+                print(f"ID: {page.metadata['page_id']}")
+                rich_page_id = page.metadata["page_id"]  # Save for cleanup
+            else:
+                print("Failed to create rich formatted page")
+        except Exception as e:
+            print(f"Error creating rich formatted page: {str(e)}")
+
+        # Test Case 3: Create page with parent page
+        print("\n3. Testing page creation with parent page...")
+        try:
+            # First, search for a suitable parent page
+            parent_results = confluence.search(
+                'type = page AND space = "IS" AND title ~ "Project Best Practices"',
+                limit=1,
+            )
+            if parent_results:
+                parent_page = parent_results[0]
+                parent_id = parent_page.metadata["page_id"]
+
+                title = "Test Page - With Parent"
+                content = "This is a child page created under Project Best Practices."
+
+                # Create the page with parent_id
+                page = confluence.create_page(
+                    space_key=space_key,
+                    title=title,
+                    body=content,
+                    parent_id=parent_id,
+                    representation="storage",  # Ensure we use storage format
+                )
+
+                if page:
+                    print(f"Successfully created child page:")
+                    print(f"Title: {page.metadata['title']}")
+                    print(f"Parent: {parent_page.metadata['title']}")
+                    print(f"ID: {page.metadata['page_id']}")
+                    child_page_id = page.metadata["page_id"]  # Save for cleanup
+                else:
+                    print("Failed to create child page")
+                    print(
+                        "This might be due to permissions or parent page restrictions"
+                    )
+            else:
+                print("Could not find suitable parent page")
+        except Exception as e:
+            print(f"Error creating page with parent: {str(e)}")
+            print("This might be due to permissions or parent page configuration")
+
+        # Test Case 4: Create page with invalid space
+        print("\n4. Testing page creation with invalid space...")
+        try:
+            title = "Test Page - Invalid Space"
+            content = "This page should not be created."
+            invalid_space = "INVALID_SPACE"
+
+            page = confluence.create_page(invalid_space, title, content)
+            if page:
+                print("Error: Successfully created page in invalid space")
+            else:
+                print("Successfully handled invalid space error")
+        except Exception as e:
+            print(f"Expected error for invalid space: {str(e)}")
+
+        # Cleanup: Delete test pages
+        print("\nCleaning up test pages...")
+        try:
+            if "test_page_id" in locals():
+                confluence.delete_page(test_page_id)
+                print(f"Deleted test page with ID: {test_page_id}")
+            if "rich_page_id" in locals():
+                confluence.delete_page(rich_page_id)
+                print(f"Deleted rich formatted page with ID: {rich_page_id}")
+            if "child_page_id" in locals():
+                confluence.delete_page(child_page_id)
+                print(f"Deleted child page with ID: {child_page_id}")
+        except Exception as e:
+            print(f"Error during cleanup: {str(e)}")
+
+    except Exception as e:
+        print(f"ERROR: Error during test execution: {str(e)}")
+        import traceback
+
+        print("\nFull error details:")
+        print(traceback.format_exc())
+
+
 async def main():
-    print("Starting Confluence search tests...")
-    await test_confluence_search()
+    print("Starting Confluence create page tests...")
+    await test_confluence_create_page()
     print("\nTests completed.")
 
 

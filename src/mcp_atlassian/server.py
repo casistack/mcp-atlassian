@@ -15,14 +15,24 @@ from .search import UnifiedSearch
 from .content import TemplateHandler
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("mcp-atlassian")
 
 # Initialize the content fetchers
+logger.debug("Initializing content fetchers...")
 confluence_fetcher = ConfluenceFetcher()
 jira_fetcher = JiraFetcher()
 unified_search = UnifiedSearch(confluence_fetcher, jira_fetcher)
 app = Server("mcp-atlassian")
+logger.debug("Server initialized successfully")
+
+# Tool categories for better organization
+TOOL_CATEGORIES = {
+    "search": "🔍 Search",
+    "confluence": "📝 Confluence",
+    "jira": "🎯 Jira",
+    "templates": "📋 Templates",
+}
 
 
 @app.list_resources()
@@ -124,10 +134,31 @@ async def read_resource(uri: AnyUrl) -> str:
 @app.list_tools()
 async def list_tools() -> list[Tool]:
     """List available Confluence and Jira tools."""
-    return [
+    logger.debug("Starting list_tools()")
+    tools = [
         Tool(
             name="unified_search",
-            description="Search across both Confluence and Jira platforms",
+            description="""
+### 🔍 Cross-Platform Search
+
+Search across both Confluence and Jira platforms in a single query.
+
+#### Features:
+- Full-text search across all content
+- Filter by platform (Confluence, Jira)
+- Smart result ranking
+- Content excerpts with highlights
+
+#### Example:
+```json
+{
+    "query": "deployment process",
+    "platforms": ["confluence", "jira"],
+    "limit": 5
+}
+```
+            """,
+            category=TOOL_CATEGORIES["search"],
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -150,10 +181,41 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["query"],
             },
+            metadata={
+                "icon": "🔍",
+                "status": "stable",
+                "version": "1.0",
+                "author": "MCP Atlassian Team",
+            },
         ),
         Tool(
             name="confluence_search",
-            description="Search Confluence content using CQL",
+            description="""
+### 📝 Confluence Search
+
+Search Confluence content using CQL (Confluence Query Language).
+
+#### Features:
+- Advanced CQL query support
+- Space-specific search
+- Content type filtering
+- Metadata inclusion
+
+#### Example:
+```json
+{
+    "query": "type=page AND space=DEV AND text~'deployment'",
+    "limit": 5
+}
+```
+
+#### Common CQL Operators:
+- `AND`, `OR`, `NOT`
+- `~` for text search
+- `=` for exact match
+- `IN` for multiple values
+            """,
+            category=TOOL_CATEGORIES["confluence"],
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -171,10 +233,42 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["query"],
             },
+            metadata={
+                "icon": "📝",
+                "status": "stable",
+                "version": "1.0",
+                "author": "MCP Atlassian Team",
+            },
         ),
         Tool(
             name="confluence_get_page",
-            description="Get content of a specific Confluence page by ID",
+            description="""
+### 📄 Get Confluence Page
+
+Retrieve content and metadata of a specific Confluence page.
+
+#### Features:
+- Full page content retrieval
+- Optional metadata inclusion
+- Version information
+- Author and modification details
+
+#### Example:
+```json
+{
+    "page_id": "123456",
+    "include_metadata": true
+}
+```
+
+#### Returns:
+- Page content in storage format
+- Last modified date
+- Version number
+- Author information
+- Labels and permissions
+            """,
+            category=TOOL_CATEGORIES["confluence"],
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -187,10 +281,41 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["page_id"],
             },
+            metadata={
+                "icon": "📄",
+                "status": "stable",
+                "version": "1.0",
+                "author": "MCP Atlassian Team",
+            },
         ),
         Tool(
             name="confluence_get_comments",
-            description="Get comments for a specific Confluence page",
+            description="""
+### 💬 Get Confluence Comments
+
+Retrieve all comments for a specific Confluence page.
+
+#### Features:
+- Full comment content
+- Author information
+- Timestamps
+- Nested replies
+- Formatting preserved
+
+#### Example:
+```json
+{
+    "page_id": "123456"
+}
+```
+
+#### Returns:
+- Comment content
+- Author details
+- Creation timestamp
+- Reply structure
+            """,
+            category=TOOL_CATEGORIES["confluence"],
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -198,10 +323,41 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["page_id"],
             },
+            metadata={
+                "icon": "💬",
+                "status": "stable",
+                "version": "1.0",
+                "author": "MCP Atlassian Team",
+            },
         ),
         Tool(
             name="jira_get_issue",
-            description="Get details of a specific Jira issue",
+            description="""
+### 🎯 Get Jira Issue
+
+Retrieve detailed information about a specific Jira issue.
+
+#### Features:
+- Full issue details
+- Customizable field expansion
+- Rich formatting support
+- Attachment information
+
+#### Example:
+```json
+{
+    "issue_key": "PROJ-123",
+    "expand": "renderedFields,names,schema,transitions,operations,editmeta,changelog"
+}
+```
+
+#### Common Expand Options:
+- `renderedFields`: Get formatted field values
+- `transitions`: Include available status transitions
+- `changelog`: Include issue history
+- `comments`: Include all comments
+            """,
+            category=TOOL_CATEGORIES["jira"],
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -217,10 +373,43 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["issue_key"],
             },
+            metadata={
+                "icon": "🎯",
+                "status": "stable",
+                "version": "1.0",
+                "author": "MCP Atlassian Team",
+            },
         ),
         Tool(
             name="jira_search",
-            description="Search Jira issues using JQL",
+            description="""
+### 🔎 Jira Search
+
+Search Jira issues using JQL (Jira Query Language).
+
+#### Features:
+- Advanced JQL query support
+- Custom field selection
+- Result limiting
+- Rich metadata
+
+#### Example:
+```json
+{
+    "jql": "project = PROJ AND status = 'In Progress' ORDER BY priority DESC",
+    "fields": "summary,description,status,priority",
+    "limit": 10
+}
+```
+
+#### Common JQL Operators:
+- `=`, `!=`, `>`, `>=`, `<`, `<=`
+- `IN`, `NOT IN`
+- `~` for contains
+- `IS NULL`, `IS NOT NULL`
+- `ORDER BY`, `DESC`, `ASC`
+            """,
+            category=TOOL_CATEGORIES["jira"],
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -240,10 +429,43 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["jql"],
             },
+            metadata={
+                "icon": "🔎",
+                "status": "stable",
+                "version": "1.0",
+                "author": "MCP Atlassian Team",
+            },
         ),
         Tool(
             name="jira_get_project_issues",
-            description="Get all issues for a specific Jira project",
+            description="""
+### 📊 Get Project Issues
+
+Retrieve all issues from a specific Jira project with pagination support.
+
+#### Features:
+- Project-wide issue listing
+- Pagination support
+- Basic issue details
+- Sorting options
+
+#### Example:
+```json
+{
+    "project_key": "PROJ",
+    "limit": 20
+}
+```
+
+#### Returns:
+- Issue key
+- Title
+- Type
+- Status
+- Creation date
+- Issue URL
+            """,
+            category=TOOL_CATEGORIES["jira"],
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -258,26 +480,113 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["project_key"],
             },
+            metadata={
+                "icon": "📊",
+                "status": "stable",
+                "version": "1.0",
+                "author": "MCP Atlassian Team",
+            },
         ),
         Tool(
             name="get_confluence_templates",
-            description="Get available Confluence templates (blueprints and custom templates)",
+            description="""
+### 📑 List Confluence Templates
+
+Get all available Confluence templates, including blueprints and custom templates.
+
+#### Features:
+- Blueprint templates
+- Custom templates
+- Space templates
+- Template metadata
+
+#### Returns:
+- Template ID
+- Name
+- Description
+- Space key (if space-specific)
+- Labels
+            """,
+            category=TOOL_CATEGORIES["templates"],
             inputSchema={
                 "type": "object",
                 "properties": {},
+            },
+            metadata={
+                "icon": "📑",
+                "status": "stable",
+                "version": "1.0",
+                "author": "MCP Atlassian Team",
             },
         ),
         Tool(
             name="get_jira_templates",
-            description="Get available Jira issue templates",
+            description="""
+### 📝 List Jira Templates
+
+Get all available Jira issue templates.
+
+#### Features:
+- Project templates
+- Shared templates
+- Custom field defaults
+- Template metadata
+
+#### Returns:
+- Template ID
+- Name
+- Description
+- Project key (if project-specific)
+- Issue type
+- Field mappings
+            """,
+            category=TOOL_CATEGORIES["templates"],
             inputSchema={
                 "type": "object",
                 "properties": {},
             },
+            metadata={
+                "icon": "📝",
+                "status": "stable",
+                "version": "1.0",
+                "author": "MCP Atlassian Team",
+            },
         ),
         Tool(
             name="create_from_confluence_template",
-            description="Create a new Confluence page from a template",
+            description="""
+### 📋 Create from Confluence Template
+
+Create a new Confluence page using a predefined template.
+
+#### Features:
+- Template-based page creation
+- Variable substitution
+- Rich content formatting
+- Automatic space organization
+
+#### Example:
+```json
+{
+    "template_id": "com.atlassian.confluence.plugins.confluence-create-content-plugin:create-blank-page",
+    "space_key": "TEAM",
+    "title": "Project Requirements",
+    "template_parameters": {
+        "project_name": "MCP Integration",
+        "team": "Backend",
+        "start_date": "2024-01-15"
+    }
+}
+```
+
+#### Template Types:
+- Blank pages
+- Meeting notes
+- Product requirements
+- Decision documents
+- How-to guides
+            """,
+            category=TOOL_CATEGORIES["templates"],
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -300,10 +609,47 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["template_id", "space_key", "title"],
             },
+            metadata={
+                "icon": "📋",
+                "status": "stable",
+                "version": "1.0",
+                "author": "MCP Atlassian Team",
+            },
         ),
         Tool(
             name="create_from_jira_template",
-            description="Create a new Jira issue from a template",
+            description="""
+### ✨ Create Jira Issue from Template
+
+Create a new Jira issue using a predefined template.
+
+#### Features:
+- Template-based issue creation
+- Variable substitution
+- Custom field support
+- Automatic assignments
+
+#### Example:
+```json
+{
+    "template_id": "bug-report",
+    "project_key": "PROJ",
+    "summary": "Critical: Database Connection Error",
+    "template_parameters": {
+        "severity": "Critical",
+        "environment": "Production",
+        "affected_version": "2.1.0"
+    }
+}
+```
+
+#### Template Parameters:
+- Project-specific fields
+- Custom fields
+- Dynamic variables
+- Assignee rules
+            """,
+            category=TOOL_CATEGORIES["templates"],
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -326,10 +672,40 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["template_id", "project_key", "summary"],
             },
+            metadata={
+                "icon": "✨",
+                "status": "stable",
+                "version": "1.0",
+                "author": "MCP Atlassian Team",
+            },
         ),
         Tool(
             name="get_jira_issue_transitions",
-            description="Get available status transitions for a Jira issue",
+            description="""
+### 🔄 Get Issue Transitions
+
+Get all available status transitions for a Jira issue.
+
+#### Features:
+- Current status
+- Available transitions
+- Required fields
+- Transition rules
+
+#### Example:
+```json
+{
+    "issue_key": "PROJ-123"
+}
+```
+
+#### Returns:
+- Transition ID
+- Target status
+- Screen requirements
+- Validation rules
+            """,
+            category=TOOL_CATEGORIES["jira"],
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -340,10 +716,42 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["issue_key"],
             },
+            metadata={
+                "icon": "🔄",
+                "status": "stable",
+                "version": "1.0",
+                "author": "MCP Atlassian Team",
+            },
         ),
         Tool(
             name="update_jira_section",
-            description="Update a specific section of a Jira issue description",
+            description="""
+### ✏️ Update Issue Section
+
+Update a specific section of a Jira issue description by heading.
+
+#### Features:
+- Section-based updates
+- Markdown support
+- Heading preservation
+- Content formatting
+
+#### Example:
+```json
+{
+    "issue_key": "PROJ-123",
+    "heading": "Technical Details",
+    "content": "Updated technical specifications and implementation notes..."
+}
+```
+
+#### Usage Notes:
+- Preserves other sections
+- Maintains formatting
+- Creates section if not found
+- Supports rich text
+            """,
+            category=TOOL_CATEGORIES["jira"],
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -362,10 +770,42 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["issue_key", "heading", "content"],
             },
+            metadata={
+                "icon": "✏️",
+                "status": "stable",
+                "version": "1.0",
+                "author": "MCP Atlassian Team",
+            },
         ),
         Tool(
             name="get_jira_attachments",
-            description="Get all attachments for a Jira issue",
+            description="""
+### 📎 Get Issue Attachments
+
+Retrieve all attachments for a specific Jira issue.
+
+#### Features:
+- File metadata
+- Download URLs
+- Creator information
+- Size and type details
+
+#### Example:
+```json
+{
+    "issue_key": "PROJ-123"
+}
+```
+
+#### Returns:
+- File name
+- Content type
+- File size
+- Creation date
+- Creator
+- Download URL
+            """,
+            category=TOOL_CATEGORIES["jira"],
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -373,8 +813,16 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["issue_key"],
             },
+            metadata={
+                "icon": "📎",
+                "status": "stable",
+                "version": "1.0",
+                "author": "MCP Atlassian Team",
+            },
         ),
     ]
+    logger.debug(f"Returning {len(tools)} tools: {[tool.name for tool in tools]}")
+    return tools
 
 
 @app.call_tool()
@@ -679,6 +1127,40 @@ async def call_tool(name: str, arguments: Any) -> Sequence[TextContent]:
     except Exception as e:
         logger.error(f"Tool execution error: {str(e)}")
         raise RuntimeError(f"Tool execution failed: {str(e)}")
+
+
+@app.list_resource_templates()
+async def list_resource_templates() -> list[Resource]:
+    """List available templates for Confluence and Jira."""
+    logger.debug("Starting list_resource_templates()")
+    templates = []
+
+    # Add Confluence templates
+    confluence_templates = confluence_fetcher.get_templates()
+    for template in confluence_templates:
+        templates.append(
+            Resource(
+                uri=AnyUrl(f"template://confluence/{template['id']}"),
+                name=f"Confluence Template: {template['name']}",
+                mimeType="text/plain",
+                description=template.get("description", ""),
+            )
+        )
+
+    # Add Jira templates
+    jira_templates = jira_fetcher.get_templates()
+    for template in jira_templates:
+        templates.append(
+            Resource(
+                uri=AnyUrl(f"template://jira/{template['id']}"),
+                name=f"Jira Template: {template['name']}",
+                mimeType="text/plain",
+                description=template.get("description", ""),
+            )
+        )
+
+    logger.debug(f"Returning {len(templates)} templates")
+    return templates
 
 
 async def main():

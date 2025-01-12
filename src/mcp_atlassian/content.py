@@ -1084,93 +1084,75 @@ class TemplateHandler:
         try:
             # First try to get available templates to determine the type
             templates = self.confluence.get_templates(space_key)
+            logger.debug(f"Available templates: {templates}")
+
             template_info = next((t for t in templates if t["id"] == template_id), None)
+            logger.debug(f"Selected template info: {template_info}")
 
             if not template_info:
                 logger.error(f"Template {template_id} not found")
-                return {"error": f"Template {template_id} not found"}
+                return {"success": False, "error": f"Template {template_id} not found"}
 
-            # Handle blueprint templates
-            if template_info["type"] == "blueprint":
-                try:
-                    # Create page directly from blueprint
-                    doc = self.confluence.confluence.create_page_from_blueprint(
-                        space=space_key,
+            try:
+                # Create page from template using direct API call
+                logger.debug(f"Creating page with template_id: {template_id}")
+                logger.debug(f"Template parameters: {template_parameters}")
+
+                # Use the appropriate template creation method based on type
+                if template_info["type"] == "blueprint":
+                    logger.debug("Using blueprint template creation")
+                    doc = self.confluence.create_page(
+                        space_key=space_key,
                         title=title,
-                        blueprint_id=template_id,
-                        template_parameters=template_parameters or {},
+                        body="",
+                        template_id=template_id,
+                        template_parameters=template_parameters,
+                        representation="storage",
+                    )
+                else:
+                    logger.debug("Using content template creation")
+                    doc = self.confluence.create_page(
+                        space_key=space_key,
+                        title=title,
+                        body="",
+                        template_id=template_id,
+                        template_parameters=template_parameters,
+                        representation="storage",
                     )
 
-                    if doc:
-                        return {
-                            "page_id": doc["id"],
-                            "title": doc["title"],
-                            "space_key": space_key,
-                            "url": doc.get("_links", {}).get("base", "")
-                            + doc.get("_links", {}).get("webui", ""),
-                            "version": doc.get("version", {}).get("number"),
-                        }
-                except Exception as e:
-                    logger.error(f"Error creating page from blueprint: {str(e)}")
-                    return {"error": f"Error creating page from blueprint: {str(e)}"}
-
-            # Handle content templates
-            else:
-                template = self.confluence.confluence.get_content_template(template_id)
-                if not template:
-                    logger.error(f"Content template {template_id} not found")
-                    return {"error": f"Content template {template_id} not found"}
-
-                if not template.get("body") or not template["body"].get("storage"):
-                    logger.error(f"Invalid template structure: {template}")
-                    return {
-                        "error": "Invalid template structure - missing body or storage"
-                    }
-
-                content = template["body"]["storage"]["value"]
-                if not content:
-                    logger.error("Template content is empty")
-                    return {"error": "Template content is empty"}
-
-                if template_parameters:
-                    try:
-                        for key, value in template_parameters.items():
-                            content = content.replace(f"${key}$", str(value))
-                    except Exception as e:
-                        logger.error(f"Error processing template parameters: {str(e)}")
-                        return {
-                            "error": f"Error processing template parameters: {str(e)}"
-                        }
-
-                # Create the page using the processed template content
-                doc = self.confluence.create_page(
-                    space_key=space_key,
-                    title=title,
-                    body=content,
-                    representation="storage",
-                )
-
                 if doc:
+                    logger.debug(f"Successfully created page: {doc.metadata}")
                     return {
+                        "success": True,
                         "page_id": doc.metadata["page_id"],
                         "title": doc.metadata["title"],
                         "space_key": doc.metadata["space_key"],
                         "url": doc.metadata["url"],
                         "version": doc.metadata["version"],
+                        "content": doc.page_content,
                     }
 
-            logger.error("Failed to create page - no document returned")
-            return {"error": "Failed to create page - no document returned"}
+                logger.error("Failed to create page - no document returned")
+                return {
+                    "success": False,
+                    "error": "Failed to create page - no document returned",
+                }
+
+            except Exception as e:
+                error_msg = f"Error creating page from template: {str(e)}"
+                logger.error(error_msg)
+                logger.debug("Exception details:", exc_info=True)
+                return {"success": False, "error": error_msg}
 
         except ValueError as ve:
             error_msg = str(ve)
             logger.error(f"Value error creating page from template: {error_msg}")
-            return {"error": error_msg}
+            return {"success": False, "error": error_msg}
         except Exception as e:
             error_msg = str(e)
             logger.error(f"Error creating page from template: {error_msg}")
             logger.debug("Full error details:", exc_info=True)
-            return {"error": error_msg}
+            return {"success": False, "error": error_msg}
 
     def create_or_update_template(
         self,

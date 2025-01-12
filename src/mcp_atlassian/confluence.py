@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Optional
+from typing import Optional, Dict, Any
 from pathlib import Path
 from typing import BinaryIO, List, Optional, Union
 
@@ -213,6 +213,8 @@ class ConfluenceFetcher:
         body: str,
         parent_id: Optional[str] = None,
         representation: str = "storage",
+        template_id: Optional[str] = None,
+        template_parameters: Optional[Dict[str, Any]] = None,
     ) -> Optional[Document]:
         """Create a new Confluence page.
 
@@ -222,6 +224,8 @@ class ConfluenceFetcher:
             body: The content of the page
             parent_id: Optional ID of the parent page
             representation: Content representation ('storage' for wiki markup, 'editor' for rich text)
+            template_id: Optional template ID to create page from
+            template_parameters: Optional parameters for template
 
         Returns:
             Document object if creation successful, None otherwise
@@ -231,15 +235,99 @@ class ConfluenceFetcher:
                 f"Creating page with title: {title} in space: {space_key}"
             )
             self.logger.debug(f"Content representation: {representation}")
-            self.logger.debug(f"Content length: {len(body)}")
 
-            page = self.confluence.create_page(
-                space=space_key,
-                title=title,
-                body=body,
-                parent_id=parent_id,
-                representation=representation,
-            )
+            if template_id:
+                # First check if this is a blueprint template
+                templates = self.get_templates(space_key)
+                template_info = next(
+                    (t for t in templates if t["id"] == template_id), None
+                )
+
+                if not template_info:
+                    self.logger.error(f"Template {template_id} not found")
+                    return None
+
+                if template_info["type"] == "blueprint":
+                    # For blueprint templates, we need to create a page first and then update it
+                    self.logger.debug(
+                        f"Creating page from blueprint template: {template_id}"
+                    )
+                    self.logger.debug(f"Template parameters: {template_parameters}")
+
+                    # Create initial page
+                    page = self.confluence.create_page(
+                        space=space_key,
+                        title=title,
+                        body="",  # Empty body initially
+                        parent_id=parent_id,
+                        representation=representation,
+                    )
+
+                    if not page or not page.get("id"):
+                        self.logger.error("Failed to create initial page")
+                        return None
+
+                    try:
+                        # Now apply the blueprint template
+                        self.confluence.create_page_from_blueprint(
+                            page_id=page["id"],
+                            blueprint_id=template_id,
+                            **template_parameters or {},
+                        )
+
+                        # Get the updated page
+                        created_page = self.get_page_content(page["id"])
+                        self.logger.debug(
+                            f"Created page metadata: {created_page.metadata}"
+                        )
+                        return created_page
+
+                    except Exception as e:
+                        # If blueprint application fails, clean up the created page
+                        self.logger.error(f"Error applying blueprint: {str(e)}")
+                        self.confluence.remove_page(page["id"])
+                        return None
+                else:
+                    # For content templates
+                    self.logger.debug(
+                        f"Creating page from content template: {template_id}"
+                    )
+                    try:
+                        # Use create_page_from_template for content templates
+                        page = self.confluence.create_page_from_template(
+                            space=space_key,
+                            title=title,
+                            template_id=template_id,
+                            parent_id=parent_id,
+                            **template_parameters or {},
+                        )
+
+                        if page and page.get("id"):
+                            created_page = self.get_page_content(page["id"])
+                            self.logger.debug(
+                                f"Created page metadata: {created_page.metadata}"
+                            )
+                            return created_page
+
+                        self.logger.error(
+                            "Failed to create page from template - API returned invalid response"
+                        )
+                        return None
+
+                    except Exception as e:
+                        self.logger.error(
+                            f"Error creating page from template: {str(e)}"
+                        )
+                        return None
+            else:
+                # Regular page creation without template
+                page = self.confluence.create_page(
+                    space=space_key,
+                    title=title,
+                    body=body,
+                    parent_id=parent_id,
+                    representation=representation,
+                )
 
             self.logger.debug(f"API Response: {page}")
 
@@ -851,6 +939,7 @@ class ConfluenceFetcher:
         templates = []
         try:
             # Get blueprint templates
+            self.logger.debug(f"Fetching blueprint templates for space: {space_key}")
             blueprint_response = self.confluence.get_blueprint_templates(space_key)
             self.logger.debug(f"Blueprint response: {blueprint_response}")
 
@@ -868,7 +957,9 @@ class ConfluenceFetcher:
 
             # Get custom templates
             if space_key:
+                self.logger.debug(f"Fetching custom templates for space: {space_key}")
                 custom_templates = self.confluence.get_content_templates(space_key)
+                self.logger.debug(f"Custom templates response: {custom_templates}")
 
                 if custom_templates and isinstance(custom_templates, list):
                     for template in custom_templates:
@@ -882,11 +973,13 @@ class ConfluenceFetcher:
                             }
                         )
 
+            self.logger.debug(f"Final templates list: {templates}")
+            return templates
+
         except Exception as e:
             self.logger.error(f"Error fetching Confluence templates: {str(e)}")
             self.logger.debug("Exception details:", exc_info=True)
-
-        return templates
+            return []
 
     def search_pages(self, title: str, limit: int = 10) -> List[Document]:
         """Search for pages across all spaces by title."""

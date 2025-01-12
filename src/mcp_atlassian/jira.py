@@ -90,6 +90,14 @@ class JiraFetcher:
             )
             formatted_created = created_date.strftime("%Y-%m-%d")
 
+            # Format updated date if available
+            updated_date = None
+            if "updated" in issue["fields"]:
+                updated_date = datetime.fromisoformat(
+                    issue["fields"]["updated"].replace("Z", "+00:00")
+                )
+                formatted_updated = updated_date.strftime("%Y-%m-%d")
+
             # Combine content in a more structured way
             content = f"""Issue: {issue_key}
 Title: {issue['fields'].get('summary', '')}
@@ -109,9 +117,12 @@ Comments:
             metadata = {
                 "key": issue_key,
                 "title": issue["fields"].get("summary", ""),
+                "summary": issue["fields"].get("summary", ""),
                 "type": issue["fields"]["issuetype"]["name"],
                 "status": issue["fields"]["status"]["name"],
-                "created_date": formatted_created,
+                "created": formatted_created,
+                "updated": formatted_updated if updated_date else None,
+                "description": self._clean_text(issue["fields"].get("description", "")),
                 "priority": issue["fields"].get("priority", {}).get("name", "None"),
                 "link": f"{self.config.url.rstrip('/')}/browse/{issue_key}",
             }
@@ -214,7 +225,7 @@ Comments:
 
             # Add optional fields if provided
             if priority:
-                fields["priority"] = {"name": priority}
+                fields["priority"] = {"id": priority}
             if assignee:
                 fields["assignee"] = {"name": assignee}
             if labels:
@@ -223,11 +234,48 @@ Comments:
                 fields.update(custom_fields)
 
             # Create the issue
-            issue = self.jira.issue_create(fields=fields)
+            try:
+                issue = self.jira.issue_create(fields=fields)
+            except Exception as e:
+                logger.error(f"Error creating issue with fields: {fields}")
+                logger.error(f"Error details: {str(e)}")
+                return None
 
             if issue and "key" in issue:
-                # Return the created issue as a Document
-                return self.get_issue(issue["key"])
+                # Get the full issue details
+                full_issue = self.jira.issue(issue["key"])
+
+                # Format created date
+                created_date = datetime.fromisoformat(
+                    full_issue["fields"]["created"].replace("Z", "+00:00")
+                )
+                formatted_created = created_date.strftime("%Y-%m-%d")
+
+                # Build metadata
+                metadata = {
+                    "key": issue["key"],
+                    "summary": full_issue["fields"]["summary"],
+                    "title": full_issue["fields"]["summary"],  # Alias for summary
+                    "type": full_issue["fields"]["issuetype"]["name"],
+                    "status": full_issue["fields"]["status"]["name"],
+                    "created_date": formatted_created,
+                    "priority": full_issue["fields"]
+                    .get("priority", {})
+                    .get("name", "None"),
+                    "link": f"{self.config.url.rstrip('/')}/browse/{issue['key']}",
+                }
+
+                # Build content
+                content = f"""Issue: {issue['key']}
+Title: {full_issue['fields']['summary']}
+Type: {full_issue['fields']['issuetype']['name']}
+Status: {full_issue['fields']['status']['name']}
+Created: {formatted_created}
+
+Description:
+{description}"""
+
+                return Document(page_content=content, metadata=metadata)
             return None
 
         except Exception as e:
@@ -680,3 +728,19 @@ Comments:
         except Exception as e:
             logger.error(f"Error fetching Jira templates: {e}")
             return []
+
+    def delete_issue(self, issue_key: str) -> bool:
+        """Delete a Jira issue.
+
+        Args:
+            issue_key: The issue key to delete
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            self.jira.delete_issue(issue_key)
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting issue {issue_key}: {e}")
+            return False

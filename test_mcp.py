@@ -13,6 +13,7 @@ from mcp_atlassian.confluence import ConfluenceFetcher
 from mcp_atlassian.content import ContentEditor, RichTextEditor
 from mcp_atlassian.config import Config
 from mcp_atlassian.server import Tool, list_tools, call_tool, TextContent
+from mcp_atlassian.jira import JiraFetcher
 
 # Configure logging
 logging.basicConfig(
@@ -192,463 +193,290 @@ async def test_unified_search():
         print(traceback.format_exc())
 
 
-async def test_confluence_search():
-    """Test Confluence search functionality using direct code calls."""
+async def test_jira_get_project_issues():
+    """Test retrieving all issues for a Jira project."""
     try:
         if not validate_config():
             print("ERROR: Configuration validation failed")
             return
 
-        print("\n=== Testing Confluence Search ===")
+        print("\n=== Testing Jira Project Issues Retrieval ===")
 
-        # Initialize the actual ConfluenceFetcher
-        confluence = ConfluenceFetcher()
+        # Initialize the JiraFetcher
+        jira = JiraFetcher()
+        print("\nJira connection initialized")
 
-        # Test Case 1: Search by title
-        print("\n1. Testing search by title...")
-        title = "Project Best Practices"
+        # Test Case 1: Get issues with default limit
+        print("\n1. Testing issue retrieval with default limit...")
         try:
-            # Using the actual search method from ConfluenceFetcher
-            cql = f'type = page AND title ~ "{title}"'
-            results = confluence.search(cql, limit=10)
-            print(f"Search results for title '{title}':")
-            for doc in results:
-                print(f"\nTitle: {doc.metadata['title']}")
-                print(
-                    f"Space: {doc.metadata['space_name']} ({doc.metadata['space_key']})"
-                )
-                print(f"URL: {doc.metadata['url']}")
-                print(f"Last Modified: {doc.metadata['last_modified']}")
-                print(f"Author: {doc.metadata['author_name']}")
-                print("\nContent Preview:")
-                print(f"{doc.page_content[:200]}...")
-        except Exception as e:
-            print(f"Error in title search: {str(e)}")
+            # Get project key first
+            projects = jira.jira.projects()
+            if not projects:
+                print("No projects found. Please create a project in Jira first.")
+                return
 
-        # Test Case 2: Search with CQL query
-        print("\n2. Testing search with CQL query...")
-        cql = 'type = page AND space = "IS" AND text ~ "documentation"'
-        try:
-            results = confluence.search(cql, limit=5)
-            print(f"Search results for CQL '{cql}':")
-            for doc in results:
-                print(f"\nTitle: {doc.metadata['title']}")
-                print(
-                    f"Space: {doc.metadata['space_name']} ({doc.metadata['space_key']})"
-                )
-                print(f"URL: {doc.metadata['url']}")
-                print(f"Last Modified: {doc.metadata['last_modified']}")
-                print(f"Author: {doc.metadata['author_name']}")
-                print("\nContent Preview:")
-                print(f"{doc.page_content[:200]}...")
-        except Exception as e:
-            print(f"Error in CQL search: {str(e)}")
+            project_key = projects[0].get("key")
+            print(f"Using project: {project_key}")
 
-        # Test Case 3: Search with limit
-        print("\n3. Testing search with limit...")
-        try:
-            results = confluence.search('type = page AND text ~ "test"', limit=2)
-            print("Search results with limit 2:")
-            for doc in results:
-                print(f"\nTitle: {doc.metadata['title']}")
-                print(
-                    f"Space: {doc.metadata['space_name']} ({doc.metadata['space_key']})"
-                )
-        except Exception as e:
-            print(f"Error in limited search: {str(e)}")
+            print("\nFetching issues with default limit...")
+            results = jira.get_project_issues(project_key)
+            if results:
+                print("\nProject issues (default limit):")
+                for doc in results:
+                    print(f"\nKey: {doc.metadata['key']}")
+                    print(f"Summary: {doc.metadata['summary']}")
+                    print(f"Status: {doc.metadata['status']}")
+                    print(f"Type: {doc.metadata['type']}")
+            else:
+                print("No issues found in project")
 
-        # Test Case 4: Search in specific space
-        print("\n4. Testing search in specific space...")
-        try:
-            results = confluence.search('type = page AND space = "IS"', limit=5)
-            print('Search results in space "IS":')
-            for doc in results:
-                print(f"\nTitle: {doc.metadata['title']}")
-                print(
-                    f"Space: {doc.metadata['space_name']} ({doc.metadata['space_key']})"
-                )
         except Exception as e:
-            print(f"Error in space search: {str(e)}")
+            print(f"Error in default limit retrieval: {e}")
+            import traceback
 
-        # Test Case 5: Search with invalid query
-        print("\n5. Testing search with invalid query...")
+            print("\nFull error details:")
+            print(traceback.format_exc())
+
+        # Test Case 2: Get issues with custom limit
+        print("\n2. Testing issue retrieval with custom limit...")
         try:
-            results = confluence.search("invalid:query:format", limit=5)
-            print("Search results with invalid query:")
-            if not results:
-                print("No results found (expected for invalid query)")
-            for doc in results:
-                print(f"\nTitle: {doc.metadata['title']}")
+            print("\nFetching issues with limit of 2...")
+            results = jira.get_project_issues(project_key, limit=2)
+            if results:
+                print("\nProject issues (limit: 2):")
+                for doc in results:
+                    print(f"\nKey: {doc.metadata['key']}")
+                    print(f"Summary: {doc.metadata['summary']}")
+            else:
+                print("No issues found in project")
+
         except Exception as e:
-            print(f"Error handling for invalid query: {str(e)}")
+            print(f"Error in custom limit retrieval: {e}")
+
+        # Test Case 3: Get issues from non-existent project
+        print("\n3. Testing retrieval from non-existent project...")
+        try:
+            invalid_project = "NONEXIST"
+            print(f"\nAttempting to fetch issues from project: {invalid_project}")
+            results = jira.get_project_issues(invalid_project)
+            if results:
+                print("Error: Retrieved issues from non-existent project")
+            else:
+                print("✓ Successfully handled non-existent project")
+
+        except Exception as e:
+            print(f"Expected error for non-existent project: {e}")
 
     except Exception as e:
-        print(f"ERROR: Error during test execution: {str(e)}")
+        print(f"ERROR: Error during test execution: {e}")
         import traceback
 
         print("\nFull error details:")
         print(traceback.format_exc())
 
 
-async def test_confluence_create_page():
-    """Test Confluence page creation functionality using direct code calls."""
+async def test_create_jira_issue():
+    """Test Jira issue creation functionality."""
     try:
         if not validate_config():
             print("ERROR: Configuration validation failed")
             return
 
-        print("\n=== Testing Confluence Create Page ===")
+        print("\n=== Testing Jira Issue Creation ===")
 
-        # Initialize the ConfluenceFetcher and ContentEditor
-        confluence = ConfluenceFetcher()
-        editor = ContentEditor()
+        # Initialize the JiraFetcher
+        jira = JiraFetcher()
+        print("\nJira connection initialized")
 
-        # Test Case 1: Create basic page with title and text
-        print("\n1. Testing basic page creation...")
+        # Keep track of created issues for cleanup
+        created_issues = []
+
+        # Test Case 1: Create basic issue
+        print("\n1. Testing basic issue creation...")
         try:
-            title = "Test Page - Basic Content"
-            content = "This is a test page created by the automated test suite."
-            space_key = "IS"  # Using IT Support space
+            # Get project key first
+            projects = jira.jira.projects()
+            if not projects:
+                print("No projects found. Please create a project in Jira first.")
+                return
 
-            # Create the page
-            page = confluence.create_page(space_key, title, content)
-            if page:
-                print(f"Successfully created basic page:")
-                print(f"Title: {page.metadata['title']}")
-                print(f"Space: {page.metadata['space_key']}")
-                print(f"ID: {page.metadata['page_id']}")
-                test_page_id = page.metadata["page_id"]  # Save for cleanup
+            project_key = projects[0].get("key")
+            print(f"Using project: {project_key}")
+
+            # Get available issue types
+            print("\nFetching available issue types...")
+            issue_types = jira.jira.get_issue_types()
+            print("Available Issue Types:")
+            for itype in issue_types:
+                print(f"- {itype.get('name')} (ID: {itype.get('id')})")
+
+            # Find a Task or Story issue type, defaulting to the first available type
+            issue_type = next(
+                (
+                    t.get("name")
+                    for t in issue_types
+                    if t.get("name") in ["Task", "Story"]
+                ),
+                issue_types[0].get("name") if issue_types else "Task",
+            )
+            print(f"\nUsing issue type: {issue_type}")
+
+            print("\nCreating basic issue...")
+            issue = jira.create_issue(
+                project_key=project_key,
+                summary="Basic Test Issue",
+                description="This is a basic test issue created by the test suite.",
+                issue_type=issue_type,
+            )
+
+            if issue:
+                print("✓ Successfully created basic issue")
+                print(f"Key: {issue.metadata['key']}")
+                print(f"Summary: {issue.metadata['summary']}")
+                print(f"Type: {issue.metadata['type']}")
+                print(f"Status: {issue.metadata['status']}")
+                created_issues.append(issue.metadata["key"])
             else:
-                print("Failed to create basic page")
+                print("✗ Failed to create basic issue")
+
         except Exception as e:
-            print(f"Error creating basic page: {str(e)}")
+            print(f"Error in basic issue creation: {e}")
+            import traceback
 
-        # Test Case 2: Create page with rich formatting
-        print("\n2. Testing page creation with rich formatting...")
+            print("\nFull error details:")
+            print(traceback.format_exc())
+
+        # Test Case 2: Create issue with custom fields
+        print("\n2. Testing issue creation with custom fields...")
         try:
-            title = "Test Page - Rich Formatting"
-            content_editor = ContentEditor()
-            rich_editor = content_editor.create_editor()
+            print("\nFetching available priorities...")
+            # Use get_all_priorities() instead of get_priorities()
+            priorities = jira.jira.get_all_priorities()
+            if not priorities:
+                print("No priorities found in Jira instance")
+                return
 
-            # Add formatted content
-            rich_editor.heading("Main Heading", 1)
-            rich_editor.text("This is a test page with rich formatting.")
-            rich_editor.bold("This text should be bold.")
-            rich_editor.italic("This text should be italic.")
-            rich_editor.bullet_list(["Item 1", "Item 2", "Item 3"])
-            rich_editor.table(
-                headers=["Header 1", "Header 2"],
-                rows=[["Cell 1", "Cell 2"], ["Cell 3", "Cell 4"]],
-            )
-            rich_editor.status("In Progress", "blue")
-            rich_editor.code("print('Hello, World!')", "python")
+            print("Available Priorities:")
+            for priority in priorities:
+                print(f"- {priority.get('name')} (ID: {priority.get('id')})")
 
-            # Convert content to storage format
-            formatted_content = content_editor.create_rich_content(
-                rich_editor.get_content()
+            # Use the first priority found
+            priority = priorities[0]
+            print(f"\nUsing priority: {priority.get('name')}")
+
+            print("\nCreating issue with priority and labels...")
+            issue = jira.create_issue(
+                project_key=project_key,
+                summary="Test Issue with Custom Fields",
+                description="This is a test issue with custom fields.",
+                issue_type=issue_type,
+                priority=priority.get("id"),  # Use ID instead of name
+                labels=["test", "automated"],
             )
 
-            # Create the page using the formatted content
-            page = confluence.create_page(
-                space_key=space_key,
-                title=title,
-                body=formatted_content,
-                representation="storage",
-            )
-            if page:
-                print(f"Successfully created rich formatted page:")
-                print(f"Title: {page.metadata['title']}")
-                print(f"ID: {page.metadata['page_id']}")
-                rich_page_id = page.metadata["page_id"]  # Save for cleanup
+            if issue:
+                print("✓ Successfully created issue with custom fields")
+                print(f"Key: {issue.metadata['key']}")
+                print(f"Summary: {issue.metadata['summary']}")
+                print(f"Priority: {issue.metadata.get('priority', 'Not set')}")
+                print(f"Labels: {', '.join(['test', 'automated'])}")
+                created_issues.append(issue.metadata["key"])
             else:
-                print("Failed to create rich formatted page")
-        except Exception as e:
-            print(f"Error creating rich formatted page: {str(e)}")
-
-        # Test Case 3: Create page with parent page
-        print("\n3. Testing page creation with parent page...")
-        try:
-            # First, search for a suitable parent page
-            parent_results = confluence.search(
-                'type = page AND space = "IS" AND title ~ "Project Best Practices"',
-                limit=1,
-            )
-            if parent_results:
-                parent_page = parent_results[0]
-                parent_id = parent_page.metadata["page_id"]
-
-                title = "Test Page - With Parent"
-                content = "This is a child page created under Project Best Practices."
-
-                # Create the page with parent_id
-                page = confluence.create_page(
-                    space_key=space_key,
-                    title=title,
-                    body=content,
-                    parent_id=parent_id,
-                    representation="storage",  # Ensure we use storage format
+                print("✗ Failed to create issue with custom fields")
+                print(
+                    "Please check if the priority field is configured correctly in your Jira instance"
                 )
 
-                if page:
-                    print(f"Successfully created child page:")
-                    print(f"Title: {page.metadata['title']}")
-                    print(f"Parent: {parent_page.metadata['title']}")
-                    print(f"ID: {page.metadata['page_id']}")
-                    child_page_id = page.metadata["page_id"]  # Save for cleanup
-                else:
-                    print("Failed to create child page")
-                    print(
-                        "This might be due to permissions or parent page restrictions"
-                    )
-            else:
-                print("Could not find suitable parent page")
         except Exception as e:
-            print(f"Error creating page with parent: {str(e)}")
-            print("This might be due to permissions or parent page configuration")
-
-        # Test Case 4: Create page with invalid space
-        print("\n4. Testing page creation with invalid space...")
-        try:
-            title = "Test Page - Invalid Space"
-            content = "This page should not be created."
-            invalid_space = "INVALID_SPACE"
-
-            page = confluence.create_page(invalid_space, title, content)
-            if page:
-                print("Error: Successfully created page in invalid space")
-            else:
-                print("Successfully handled invalid space error")
-        except Exception as e:
-            print(f"Expected error for invalid space: {str(e)}")
-
-        # Cleanup: Delete test pages
-        print("\nCleaning up test pages...")
-        try:
-            if "test_page_id" in locals():
-                confluence.delete_page(test_page_id)
-                print(f"Deleted test page with ID: {test_page_id}")
-            if "rich_page_id" in locals():
-                confluence.delete_page(rich_page_id)
-                print(f"Deleted rich formatted page with ID: {rich_page_id}")
-            if "child_page_id" in locals():
-                confluence.delete_page(child_page_id)
-                print(f"Deleted child page with ID: {child_page_id}")
-        except Exception as e:
-            print(f"Error during cleanup: {str(e)}")
-
-    except Exception as e:
-        print(f"ERROR: Error during test execution: {str(e)}")
-        import traceback
-
-        print("\nFull error details:")
-        print(traceback.format_exc())
-
-
-async def test_confluence_update_page():
-    """Test Confluence page update functionality using direct code calls."""
-    try:
-        if not validate_config():
-            print("ERROR: Configuration validation failed")
-            return
-
-        print("\n=== Testing Confluence Update Page ===")
-
-        # Initialize the ConfluenceFetcher and ContentEditor
-        confluence = ConfluenceFetcher()
-        editor = ContentEditor()
-
-        # First create a test page to update
-        print("\n1. Creating test page for updates...")
-        try:
-            title = "Test Page - For Updates"
-            # Create initial content with proper Confluence storage format
-            rich_editor = editor.create_editor()
-            rich_editor.heading("Initial Content", 1)
-            rich_editor.text("This is a test page that will be updated.")
-            rich_editor.bullet_list(["Initial item 1", "Initial item 2"])
-
-            formatted_content = editor.create_rich_content(rich_editor.get_content())
-            space_key = "IS"
-
-            page = confluence.create_page(space_key, title, formatted_content)
-            if page:
-                print(f"Successfully created test page:")
-                print(f"Title: {page.metadata['title']}")
-                print(f"ID: {page.metadata['page_id']}")
-                print(f"URL: {page.metadata['url']}")
-                test_page_id = page.metadata["page_id"]
-
-                # Verify the page exists
-                verify_page = confluence.get_page_content(test_page_id)
-                if verify_page:
-                    print("✓ Page verified - accessible via API")
-                else:
-                    print("✗ Page verification failed - not accessible via API")
-            else:
-                print("Failed to create test page")
-                return
-        except Exception as e:
-            print(f"Error creating test page: {e}")
-            return
-
-        # Add a pause to allow manual verification
-        print("\nPage has been created. Please verify it in your browser:")
-        print(f"URL: {page.metadata['url']}")
-        input("Press Enter to continue with updates...")
-
-        # Test Case 1: Update page title
-        print("\n2. Testing page title update...")
-        try:
-            # First get the existing page content
-            print("Fetching current page content...")
-            current_page = confluence.confluence.get_page_by_id(
-                page_id=test_page_id, expand="body.storage,version"
-            )
-            if not current_page:
-                print("Failed to get current page content")
-                return
-
-            current_version = current_page.get("version", {}).get("number", 0)
-            print(f"Current page version: {current_version}")
-            print(f"Current page title: {current_page.get('title')}")
-            print(
-                "Current page content length:",
-                len(current_page["body"]["storage"]["value"]),
-            )
-
-            new_title = "Test Page - Updated Title"
-            print(f"Attempting to update title to: {new_title}")
-
-            # Keep the existing content but update the title
-            print("Making update_page API call...")
-            page = confluence.update_page(
-                page_id=test_page_id,
-                title=new_title,
-                body=current_page["body"]["storage"]["value"],
-                type="page",
-                representation="storage",
-                minor_edit=False,
-            )
-            if page:
-                print(f"Successfully updated page title to: {page.metadata['title']}")
-                print(f"New version: {page.metadata.get('version')}")
-                print(f"URL: {page.metadata['url']}")
-            else:
-                print("Failed to update page title")
-                print("Debug info:")
-                print(f"Page ID: {test_page_id}")
-                print(f"Attempted new title: {new_title}")
-                print("Content length:", len(current_page["body"]["storage"]["value"]))
-                print("Current version:", current_version)
-
-        except Exception as e:
-            print(f"Error updating page title: {e}")
+            print(f"Error in custom fields issue creation: {e}")
             import traceback
 
-            print("Full error details:")
+            print("\nFull error details:")
             print(traceback.format_exc())
 
-        # Test Case 2: Update page content with rich formatting
-        print("\n3. Testing content update with rich formatting...")
+        # Test Case 3: Create issue with attachment
+        print("\n3. Testing issue creation with attachment...")
         try:
-            # First get the current page again as it may have changed
-            print("Fetching current page content for content update...")
-            current_page = confluence.confluence.get_page_by_id(
-                page_id=test_page_id, expand="body.storage,version"
-            )
-            if not current_page:
-                print("Failed to get current page content")
-                return
+            # Create a test file
+            with open("test_attachment.txt", "w") as f:
+                f.write("This is a test attachment")
 
-            current_version = current_page.get("version", {}).get("number", 0)
-            print(f"Current page version: {current_version}")
-            print(f"Current page title: {current_page.get('title')}")
-            print(
-                "Current page content length:",
-                len(current_page["body"]["storage"]["value"]),
+            print("\nCreating issue with attachment...")
+            issue = jira.create_issue(
+                project_key=project_key,
+                summary="Test Issue with Attachment",
+                description="This is a test issue that will have an attachment.",
+                issue_type=issue_type,
             )
 
-            # Create new content while preserving the title
-            print("Creating new rich content...")
-            rich_editor = editor.create_editor()
-            rich_editor.heading("Updated Content", 1)
-            rich_editor.text("This page has been updated with rich formatting.")
-            rich_editor.bullet_list(["Update item 1", "Update item 2"])
-            rich_editor.status("Updated", "green")
+            if issue:
+                print("✓ Successfully created issue")
+                print(f"Key: {issue.metadata['key']}")
 
-            formatted_content = editor.create_rich_content(rich_editor.get_content())
-            print("New content length:", len(formatted_content))
+                # Add attachment
+                attachment = jira.jira.add_attachment_object(
+                    issue_key=issue.metadata["key"], attachment="test_attachment.txt"
+                )
 
-            print("Making update_page API call...")
-            page = confluence.update_page(
-                page_id=test_page_id,
-                title=current_page["title"],  # Keep the current title
-                body=formatted_content,
-                type="page",
-                representation="storage",
-                minor_edit=False,
-            )
-            if page:
-                print("Successfully updated page content with rich formatting")
-                print(f"New version: {page.metadata['version']}")
-                print(f"URL: {page.metadata['url']}")
+                if attachment:
+                    print("✓ Successfully added attachment")
+                else:
+                    print("✗ Failed to add attachment")
+
+                created_issues.append(issue.metadata["key"])
+
+                # Clean up test file
+                os.remove("test_attachment.txt")
             else:
-                print("Failed to update page content")
-                print("Debug info:")
-                print(f"Page ID: {test_page_id}")
-                print(f"Current title: {current_page['title']}")
-                print("New content length:", len(formatted_content))
-                print("Current version:", current_version)
+                print("✗ Failed to create issue for attachment")
 
         except Exception as e:
-            print(f"Error updating page content: {e}")
-            import traceback
+            print(f"Error in attachment issue creation: {e}")
+            if os.path.exists("test_attachment.txt"):
+                os.remove("test_attachment.txt")
 
-            print("Full error details:")
-            print(traceback.format_exc())
-
-        # Test Case 3: Update non-existent page
-        print("\n4. Testing update of non-existent page...")
+        # Test Case 4: Create issue with invalid project
+        print("\n4. Testing issue creation with invalid project...")
         try:
-            invalid_page_id = "99999999"
-            page = confluence.update_page(
-                page_id=invalid_page_id,
-                title="Invalid Page",
-                body="This should fail",
-                representation="storage",
+            invalid_project = "NONEXIST"
+            print(f"\nAttempting to create issue in project: {invalid_project}")
+            issue = jira.create_issue(
+                project_key=invalid_project,
+                summary="Test Issue in Invalid Project",
+                description="This issue should not be created.",
+                issue_type=issue_type,
             )
-            if page:
-                print("Error: Successfully updated non-existent page")
-            else:
-                print("Successfully handled non-existent page error")
-        except Exception as e:
-            print(f"Expected error for non-existent page: {e}")
 
-        # Add a pause before cleanup
-        input("\nPress Enter to proceed with cleanup...")
+            if issue:
+                print("Error: Successfully created issue in non-existent project")
+                created_issues.append(issue.metadata["key"])
+            else:
+                print("✓ Successfully handled invalid project")
+
+        except Exception as e:
+            print(f"Expected error for invalid project: {e}")
 
         # Cleanup
-        print("\nCleaning up test pages...")
-        try:
-            if "test_page_id" in locals():
-                confluence.delete_page(test_page_id)
-                print(f"Deleted test page with ID: {test_page_id}")
-        except Exception as e:
-            print(f"Error during cleanup: {str(e)}")
+        print("\nCleaning up test issues...")
+        for issue_key in created_issues:
+            try:
+                if jira.delete_issue(issue_key):
+                    print(f"Deleted test issue: {issue_key}")
+                else:
+                    print(f"Failed to delete test issue: {issue_key}")
+            except Exception as e:
+                print(f"Error deleting issue {issue_key}: {e}")
 
     except Exception as e:
-        print(f"ERROR: Error during test execution: {str(e)}")
+        print(f"ERROR: Error during test execution: {e}")
         import traceback
 
         print("\nFull error details:")
         print(traceback.format_exc())
-
-
-async def main():
-    print("Starting Confluence update page tests...")
-    await test_confluence_update_page()
-    print("\nTests completed.")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # asyncio.run(test_jira_get_issue())
+    # asyncio.run(test_jira_search())
+    # asyncio.run(test_jira_get_project_issues())
+    asyncio.run(test_create_jira_issue())

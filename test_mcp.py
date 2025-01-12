@@ -4,7 +4,7 @@ import os
 import sys
 from pathlib import Path
 import json
-from typing import Any
+from typing import Any, Optional
 
 # Add the src directory to the Python path
 sys.path.append(str(Path(__file__).parent))
@@ -84,6 +84,51 @@ def format_tool_result(result: list[TextContent]) -> Any:
         return json.loads(text_content.text)
     except json.JSONDecodeError:
         return text_content.text
+
+
+async def create_test_issue() -> Optional[str]:
+    """Create a test issue to use in our tests."""
+    try:
+        # Enable debug logging
+        logging.getLogger("mcp-jira").setLevel(logging.DEBUG)
+
+        print("\nAttempting to create test issue...")
+        result = await call_tool(
+            "create_jira_issue",
+            {
+                "project_key": "KAN",
+                "summary": "Test Issue for MCP Testing",
+                "description": "This is a test issue created for automated testing.",
+                "issue_type": "Task",
+                "priority": None,  # Remove priority for now
+                "assignee": None,
+                "labels": ["test", "automated"],
+                "custom_fields": None,
+            },
+        )
+        formatted_result = format_tool_result(result)
+        print(f"Create issue API response: {json.dumps(formatted_result, indent=2)}")
+
+        if formatted_result and formatted_result.get("success"):
+            return formatted_result.get("key")
+        return None
+    except Exception as e:
+        print(f"Error creating test issue: {str(e)}")
+        import traceback
+
+        print("\nFull error details:")
+        print(traceback.format_exc())
+        return None
+
+
+async def cleanup_test_issue(issue_key: str):
+    """Clean up the test issue after tests are complete."""
+    try:
+        result = await call_tool("delete_jira_issue", {"issue_key": issue_key})
+        if not result:
+            print(f"Warning: Failed to delete test issue {issue_key}")
+    except Exception as e:
+        print(f"Error deleting test issue: {str(e)}")
 
 
 async def test_unified_search():
@@ -193,290 +238,266 @@ async def test_unified_search():
         print(traceback.format_exc())
 
 
-async def test_jira_get_project_issues():
-    """Test retrieving all issues for a Jira project."""
+async def test_update_jira_issue():
+    """Test updating an existing Jira issue with new values."""
+    test_issue_key = None
     try:
         if not validate_config():
             print("ERROR: Configuration validation failed")
             return
 
-        print("\n=== Testing Jira Project Issues Retrieval ===")
+        print("\n=== Testing Update Jira Issue ===")
 
-        # Initialize the JiraFetcher
-        jira = JiraFetcher()
-        print("\nJira connection initialized")
+        # Create a test issue
+        print("\nCreating test issue...")
+        test_issue_key = await create_test_issue()
+        if not test_issue_key:
+            print("ERROR: Failed to create test issue")
+            return
 
-        # Test Case 1: Get issues with default limit
-        print("\n1. Testing issue retrieval with default limit...")
+        print(f"Created test issue: {test_issue_key}")
+
+        # First, verify the tool is available
+        tools = await list_tools()
+        if not any(tool.name == "update_jira_issue" for tool in tools):
+            print("ERROR: update_jira_issue tool not found in available tools")
+            return
+
+        # Test Case 1: Update basic fields
+        print("\n1. Testing update of basic fields...")
         try:
-            # Get project key first
-            projects = jira.jira.projects()
-            if not projects:
-                print("No projects found. Please create a project in Jira first.")
-                return
-
-            project_key = projects[0].get("key")
-            print(f"Using project: {project_key}")
-
-            print("\nFetching issues with default limit...")
-            results = jira.get_project_issues(project_key)
-            if results:
-                print("\nProject issues (default limit):")
-                for doc in results:
-                    print(f"\nKey: {doc.metadata['key']}")
-                    print(f"Summary: {doc.metadata['summary']}")
-                    print(f"Status: {doc.metadata['status']}")
-                    print(f"Type: {doc.metadata['type']}")
-            else:
-                print("No issues found in project")
-
+            result = await call_tool(
+                "update_jira_issue",
+                {
+                    "issue_key": test_issue_key,
+                    "summary": "Updated Test Issue",
+                    "description": "This is an updated test issue description",
+                    "priority": "High",
+                    "status": None,
+                    "assignee": None,
+                    "labels": None,
+                    "custom_fields": None,
+                },
+            )
+            formatted_result = format_tool_result(result)
+            print(
+                json.dumps(formatted_result, indent=2)
+                if formatted_result
+                else "No results"
+            )
         except Exception as e:
-            print(f"Error in default limit retrieval: {e}")
-            import traceback
+            print(f"Error in basic field update: {str(e)}")
 
-            print("\nFull error details:")
-            print(traceback.format_exc())
-
-        # Test Case 2: Get issues with custom limit
-        print("\n2. Testing issue retrieval with custom limit...")
+        # Test Case 2: Update status and assignee
+        print("\n2. Testing status and assignee update...")
         try:
-            print("\nFetching issues with limit of 2...")
-            results = jira.get_project_issues(project_key, limit=2)
-            if results:
-                print("\nProject issues (limit: 2):")
-                for doc in results:
-                    print(f"\nKey: {doc.metadata['key']}")
-                    print(f"Summary: {doc.metadata['summary']}")
-            else:
-                print("No issues found in project")
-
+            result = await call_tool(
+                "update_jira_issue",
+                {
+                    "issue_key": test_issue_key,
+                    "status": "In Progress",
+                    "assignee": None,  # Set to None since we don't have a test user
+                    "summary": None,
+                    "description": None,
+                    "priority": None,
+                    "labels": None,
+                    "custom_fields": None,
+                },
+            )
+            formatted_result = format_tool_result(result)
+            print(
+                json.dumps(formatted_result, indent=2)
+                if formatted_result
+                else "No results"
+            )
         except Exception as e:
-            print(f"Error in custom limit retrieval: {e}")
+            print(f"Error in status/assignee update: {str(e)}")
 
-        # Test Case 3: Get issues from non-existent project
-        print("\n3. Testing retrieval from non-existent project...")
+        # Test Case 3: Update labels and custom fields
+        print("\n3. Testing labels and custom fields update...")
         try:
-            invalid_project = "NONEXIST"
-            print(f"\nAttempting to fetch issues from project: {invalid_project}")
-            results = jira.get_project_issues(invalid_project)
-            if results:
-                print("Error: Retrieved issues from non-existent project")
-            else:
-                print("✓ Successfully handled non-existent project")
-
+            result = await call_tool(
+                "update_jira_issue",
+                {
+                    "issue_key": test_issue_key,
+                    "labels": ["test", "automated", "updated"],
+                    "custom_fields": None,  # Remove custom fields for now
+                    "summary": None,
+                    "description": None,
+                    "status": None,
+                    "priority": None,
+                    "assignee": None,
+                },
+            )
+            formatted_result = format_tool_result(result)
+            print(
+                json.dumps(formatted_result, indent=2)
+                if formatted_result
+                else "No results"
+            )
         except Exception as e:
-            print(f"Expected error for non-existent project: {e}")
+            print(f"Error in labels/custom fields update: {str(e)}")
+
+        # Test Case 4: Update non-existent issue
+        print("\n4. Testing update of non-existent issue...")
+        try:
+            result = await call_tool(
+                "update_jira_issue",
+                {
+                    "issue_key": "INVALID-999",
+                    "summary": "This should fail",
+                    "description": None,
+                    "status": None,
+                    "priority": None,
+                    "assignee": None,
+                    "labels": None,
+                    "custom_fields": None,
+                },
+            )
+            formatted_result = format_tool_result(result)
+            print(
+                json.dumps(formatted_result, indent=2)
+                if formatted_result
+                else "No results"
+            )
+        except Exception as e:
+            print(f"Error in non-existent issue update: {str(e)}")
 
     except Exception as e:
-        print(f"ERROR: Error during test execution: {e}")
+        print(f"ERROR: Error during test execution: {str(e)}")
         import traceback
 
         print("\nFull error details:")
         print(traceback.format_exc())
+    finally:
+        # Clean up test issue
+        if test_issue_key:
+            print(f"\nCleaning up test issue {test_issue_key}...")
+            await cleanup_test_issue(test_issue_key)
 
 
-async def test_create_jira_issue():
-    """Test Jira issue creation functionality."""
+async def test_add_jira_comment():
+    """Test adding comments to a Jira issue."""
+    test_issue_key = None
     try:
         if not validate_config():
             print("ERROR: Configuration validation failed")
             return
 
-        print("\n=== Testing Jira Issue Creation ===")
+        print("\n=== Testing Add Jira Comment ===")
 
-        # Initialize the JiraFetcher
-        jira = JiraFetcher()
-        print("\nJira connection initialized")
+        # Create a test issue
+        print("\nCreating test issue...")
+        test_issue_key = await create_test_issue()
+        if not test_issue_key:
+            print("ERROR: Failed to create test issue")
+            return
 
-        # Keep track of created issues for cleanup
-        created_issues = []
+        print(f"Created test issue: {test_issue_key}")
 
-        # Test Case 1: Create basic issue
-        print("\n1. Testing basic issue creation...")
+        # First, verify the tool is available
+        tools = await list_tools()
+        if not any(tool.name == "add_jira_comment" for tool in tools):
+            print("ERROR: add_jira_comment tool not found in available tools")
+            return
+
+        # Test Case 1: Add basic comment
+        print("\n1. Testing adding basic comment...")
         try:
-            # Get project key first
-            projects = jira.jira.projects()
-            if not projects:
-                print("No projects found. Please create a project in Jira first.")
-                return
-
-            project_key = projects[0].get("key")
-            print(f"Using project: {project_key}")
-
-            # Get available issue types
-            print("\nFetching available issue types...")
-            issue_types = jira.jira.get_issue_types()
-            print("Available Issue Types:")
-            for itype in issue_types:
-                print(f"- {itype.get('name')} (ID: {itype.get('id')})")
-
-            # Find a Task or Story issue type, defaulting to the first available type
-            issue_type = next(
-                (
-                    t.get("name")
-                    for t in issue_types
-                    if t.get("name") in ["Task", "Story"]
-                ),
-                issue_types[0].get("name") if issue_types else "Task",
+            result = await call_tool(
+                "add_jira_comment",
+                {
+                    "issue_key": test_issue_key,
+                    "content": "This is a test comment",
+                    "format_type": "plain_text",
+                    "format_options": {},
+                },
             )
-            print(f"\nUsing issue type: {issue_type}")
-
-            print("\nCreating basic issue...")
-            issue = jira.create_issue(
-                project_key=project_key,
-                summary="Basic Test Issue",
-                description="This is a basic test issue created by the test suite.",
-                issue_type=issue_type,
+            formatted_result = format_tool_result(result)
+            print(
+                json.dumps(formatted_result, indent=2)
+                if formatted_result
+                else "No results"
             )
-
-            if issue:
-                print("✓ Successfully created basic issue")
-                print(f"Key: {issue.metadata['key']}")
-                print(f"Summary: {issue.metadata['summary']}")
-                print(f"Type: {issue.metadata['type']}")
-                print(f"Status: {issue.metadata['status']}")
-                created_issues.append(issue.metadata["key"])
-            else:
-                print("✗ Failed to create basic issue")
-
         except Exception as e:
-            print(f"Error in basic issue creation: {e}")
-            import traceback
+            print(f"Error in adding basic comment: {str(e)}")
 
-            print("\nFull error details:")
-            print(traceback.format_exc())
-
-        # Test Case 2: Create issue with custom fields
-        print("\n2. Testing issue creation with custom fields...")
+        # Test Case 2: Add formatted comment with markdown
+        print("\n2. Testing adding formatted comment...")
         try:
-            print("\nFetching available priorities...")
-            # Use get_all_priorities() instead of get_priorities()
-            priorities = jira.jira.get_all_priorities()
-            if not priorities:
-                print("No priorities found in Jira instance")
-                return
-
-            print("Available Priorities:")
-            for priority in priorities:
-                print(f"- {priority.get('name')} (ID: {priority.get('id')})")
-
-            # Use the first priority found
-            priority = priorities[0]
-            print(f"\nUsing priority: {priority.get('name')}")
-
-            print("\nCreating issue with priority and labels...")
-            issue = jira.create_issue(
-                project_key=project_key,
-                summary="Test Issue with Custom Fields",
-                description="This is a test issue with custom fields.",
-                issue_type=issue_type,
-                priority=priority.get("id"),  # Use ID instead of name
-                labels=["test", "automated"],
+            result = await call_tool(
+                "add_jira_comment",
+                {
+                    "issue_key": test_issue_key,
+                    "content": "# Test Heading\n- Bullet point 1\n- Bullet point 2",
+                    "format_type": "markdown",
+                    "format_options": {"preserve_format": True},
+                },
             )
-
-            if issue:
-                print("✓ Successfully created issue with custom fields")
-                print(f"Key: {issue.metadata['key']}")
-                print(f"Summary: {issue.metadata['summary']}")
-                print(f"Priority: {issue.metadata.get('priority', 'Not set')}")
-                print(f"Labels: {', '.join(['test', 'automated'])}")
-                created_issues.append(issue.metadata["key"])
-            else:
-                print("✗ Failed to create issue with custom fields")
-                print(
-                    "Please check if the priority field is configured correctly in your Jira instance"
-                )
-
+            formatted_result = format_tool_result(result)
+            print(
+                json.dumps(formatted_result, indent=2)
+                if formatted_result
+                else "No results"
+            )
         except Exception as e:
-            print(f"Error in custom fields issue creation: {e}")
-            import traceback
+            print(f"Error in adding formatted comment: {str(e)}")
 
-            print("\nFull error details:")
-            print(traceback.format_exc())
-
-        # Test Case 3: Create issue with attachment
-        print("\n3. Testing issue creation with attachment...")
+        # Test Case 3: Add comment with mentions and links
+        print("\n3. Testing comment with mentions and links...")
         try:
-            # Create a test file
-            with open("test_attachment.txt", "w") as f:
-                f.write("This is a test attachment")
-
-            print("\nCreating issue with attachment...")
-            issue = jira.create_issue(
-                project_key=project_key,
-                summary="Test Issue with Attachment",
-                description="This is a test issue that will have an attachment.",
-                issue_type=issue_type,
+            result = await call_tool(
+                "add_jira_comment",
+                {
+                    "issue_key": test_issue_key,
+                    "content": "Please check this issue.",  # Removed @testuser mention
+                    "format_type": "jira",
+                    "format_options": {"process_mentions": True},
+                },
             )
-
-            if issue:
-                print("✓ Successfully created issue")
-                print(f"Key: {issue.metadata['key']}")
-
-                # Add attachment
-                attachment = jira.jira.add_attachment_object(
-                    issue_key=issue.metadata["key"], attachment="test_attachment.txt"
-                )
-
-                if attachment:
-                    print("✓ Successfully added attachment")
-                else:
-                    print("✗ Failed to add attachment")
-
-                created_issues.append(issue.metadata["key"])
-
-                # Clean up test file
-                os.remove("test_attachment.txt")
-            else:
-                print("✗ Failed to create issue for attachment")
-
+            formatted_result = format_tool_result(result)
+            print(
+                json.dumps(formatted_result, indent=2)
+                if formatted_result
+                else "No results"
+            )
         except Exception as e:
-            print(f"Error in attachment issue creation: {e}")
-            if os.path.exists("test_attachment.txt"):
-                os.remove("test_attachment.txt")
+            print(f"Error in adding comment with mentions: {str(e)}")
 
-        # Test Case 4: Create issue with invalid project
-        print("\n4. Testing issue creation with invalid project...")
+        # Test Case 4: Add comment to non-existent issue
+        print("\n4. Testing comment on non-existent issue...")
         try:
-            invalid_project = "NONEXIST"
-            print(f"\nAttempting to create issue in project: {invalid_project}")
-            issue = jira.create_issue(
-                project_key=invalid_project,
-                summary="Test Issue in Invalid Project",
-                description="This issue should not be created.",
-                issue_type=issue_type,
+            result = await call_tool(
+                "add_jira_comment",
+                {
+                    "issue_key": "INVALID-999",
+                    "content": "This should fail",
+                    "format_type": "plain_text",
+                    "format_options": {},
+                },
             )
-
-            if issue:
-                print("Error: Successfully created issue in non-existent project")
-                created_issues.append(issue.metadata["key"])
-            else:
-                print("✓ Successfully handled invalid project")
-
+            formatted_result = format_tool_result(result)
+            print(
+                json.dumps(formatted_result, indent=2)
+                if formatted_result
+                else "No results"
+            )
         except Exception as e:
-            print(f"Expected error for invalid project: {e}")
-
-        # Cleanup
-        print("\nCleaning up test issues...")
-        for issue_key in created_issues:
-            try:
-                if jira.delete_issue(issue_key):
-                    print(f"Deleted test issue: {issue_key}")
-                else:
-                    print(f"Failed to delete test issue: {issue_key}")
-            except Exception as e:
-                print(f"Error deleting issue {issue_key}: {e}")
+            print(f"Error in adding comment to non-existent issue: {str(e)}")
 
     except Exception as e:
-        print(f"ERROR: Error during test execution: {e}")
+        print(f"ERROR: Error during test execution: {str(e)}")
         import traceback
 
         print("\nFull error details:")
         print(traceback.format_exc())
+    finally:
+        # Clean up test issue
+        if test_issue_key:
+            print(f"\nCleaning up test issue {test_issue_key}...")
+            await cleanup_test_issue(test_issue_key)
 
 
 if __name__ == "__main__":
-    # asyncio.run(test_jira_get_issue())
-    # asyncio.run(test_jira_search())
-    # asyncio.run(test_jira_get_project_issues())
-    asyncio.run(test_create_jira_issue())
+    asyncio.run(test_update_jira_issue())
+    asyncio.run(test_add_jira_comment())

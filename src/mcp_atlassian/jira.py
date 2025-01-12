@@ -225,7 +225,14 @@ Comments:
 
             # Add optional fields if provided
             if priority:
-                fields["priority"] = {"id": priority}
+                try:
+                    # Try to get priority details first
+                    priority_details = self.jira.get_priority(priority)
+                    fields["priority"] = {"id": str(priority)}  # Convert ID to string
+                    logger.debug(f"Priority details: {priority_details}")
+                except Exception as e:
+                    logger.error(f"Error setting priority {priority}: {str(e)}")
+                    return None
             if assignee:
                 fields["assignee"] = {"name": assignee}
             if labels:
@@ -744,3 +751,56 @@ Description:
         except Exception as e:
             logger.error(f"Error deleting issue {issue_key}: {e}")
             return False
+
+    def add_comment(
+        self,
+        issue_key: str,
+        content: str,
+        format_type: str = "plain_text",
+        format_options: Optional[dict] = None,
+    ) -> Optional[Document]:
+        """Add a comment to a Jira issue.
+
+        Args:
+            issue_key: The issue key to add the comment to
+            content: The comment content
+            format_type: Type of formatting to apply (plain_text, markdown, jira)
+            format_options: Additional formatting options
+
+        Returns:
+            Document object if successful, None otherwise
+        """
+        try:
+            # Process the content based on format type
+            if format_type == "markdown":
+                # Convert markdown to Jira markup if needed
+                content = content  # Add markdown conversion if needed
+            elif format_type == "jira":
+                # Process mentions and links if requested
+                if format_options and format_options.get("process_mentions"):
+                    content = self._process_mentions(content)
+
+            # Add the comment using the Jira API
+            self.jira.add_comment(issue_key, content)
+
+            # Return the updated issue as a Document
+            return self.get_issue(issue_key)
+
+        except Exception as e:
+            logger.error(f"Error adding comment to issue {issue_key}: {e}")
+            return None
+
+    def _process_mentions(self, content: str) -> str:
+        """Process user mentions in content.
+
+        Args:
+            content: The content to process
+
+        Returns:
+            Processed content with proper mention format
+        """
+        # Convert @username to [~username] format
+        import re
+
+        mention_pattern = r"@(\w+)"
+        return re.sub(mention_pattern, r"[~\1]", content)

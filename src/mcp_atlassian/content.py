@@ -99,6 +99,108 @@ class RichTextEditor:
         """Get the current content."""
         return self._content
 
+    def text_with_properties(
+        self,
+        content: str,
+        color: str = None,
+        background: str = None,
+        alignment: str = None,
+        indent: int = None,
+    ) -> "RichTextEditor":
+        """Add text with advanced properties."""
+        properties = {}
+        if color:
+            properties["color"] = color
+        if background:
+            properties["background"] = background
+        if alignment:
+            properties["alignment"] = alignment
+        if indent:
+            properties["indent"] = indent
+
+        self._content.append(
+            {"type": "text", "content": content, "properties": properties}
+        )
+        return self
+
+    def task_list(self, items: List[Dict]) -> "RichTextEditor":
+        """Add a task list with status and assignees."""
+        self._content.append({"type": "task_list", "items": items})
+        return self
+
+    def image(
+        self, source: str, alt: str = "", caption: str = "", alignment: str = "left"
+    ) -> "RichTextEditor":
+        """Add an image with caption and alignment."""
+        self._content.append(
+            {
+                "type": "image",
+                "properties": {
+                    "source": source,
+                    "alt": alt,
+                    "caption": caption,
+                    "alignment": alignment,
+                },
+            }
+        )
+        return self
+
+    def video(self, source: str, thumbnail: str = "") -> "RichTextEditor":
+        """Add a video with optional thumbnail."""
+        self._content.append(
+            {"type": "video", "properties": {"source": source, "thumbnail": thumbnail}}
+        )
+        return self
+
+    def file(self, path: str, name: str = "", size: str = "") -> "RichTextEditor":
+        """Add a file attachment."""
+        self._content.append(
+            {"type": "file", "properties": {"path": path, "name": name, "size": size}}
+        )
+        return self
+
+    def mention(self, user: str) -> "RichTextEditor":
+        """Add a user mention."""
+        self._content.append({"type": "mention", "properties": {"user": user}})
+        return self
+
+    def emoji(self, name: str) -> "RichTextEditor":
+        """Add an emoji."""
+        self._content.append({"type": "emoji", "properties": {"name": name}})
+        return self
+
+    def expand(self, content: str, title: str) -> "RichTextEditor":
+        """Add an expandable section."""
+        self._content.append(
+            {"type": "expand", "properties": {"title": title}, "content": content}
+        )
+        return self
+
+    def divider(
+        self, style: str = "single", width: str = "100%", alignment: str = "left"
+    ) -> "RichTextEditor":
+        """Add a divider line."""
+        self._content.append(
+            {
+                "type": "divider",
+                "properties": {"style": style, "width": width, "alignment": alignment},
+            }
+        )
+        return self
+
+    def format_cell(
+        self, content: str, background: str = None, alignment: str = None
+    ) -> str:
+        """Format a table cell with advanced properties."""
+        if background or alignment:
+            properties = {}
+            if background:
+                properties["background"] = background
+            if alignment:
+                properties["alignment"] = alignment
+            return {"content": content, "properties": properties}
+        return content
+
     def status(self, text: str, color: str = "grey") -> "RichTextEditor":
         """Add a status macro."""
         self._content.append(
@@ -131,9 +233,14 @@ class RichTextEditor:
         self._content.append({"type": "list", "style": "numbered", "items": items})
         return self
 
-    def table(self, headers: list[str], rows: list[list[str]]) -> "RichTextEditor":
-        """Create a table."""
-        self._content.append({"type": "table", "headers": headers, "rows": rows})
+    def table(
+        self, headers: list[str], rows: list[list[str]], properties: Dict = None
+    ) -> "RichTextEditor":
+        """Create a table with advanced formatting."""
+        table_data = {"type": "table", "headers": headers, "rows": rows}
+        if properties:
+            table_data["properties"] = properties
+        self._content.append(table_data)
         return self
 
     def heading(self, text: str, level: int = 1) -> "RichTextEditor":
@@ -163,14 +270,22 @@ class RichTextEditor:
         return self
 
     def panel(
-        self, content: str, panel_type: str = "info", title: str = ""
+        self,
+        content: str,
+        panel_type: str = "info",
+        title: str = "",
+        collapsible: bool = False,
     ) -> "RichTextEditor":
-        """Add a panel."""
+        """Add a panel with advanced options."""
         self._content.append(
             {
                 "type": "panel",
                 "content": content,
-                "properties": {"type": panel_type, "title": title},
+                "properties": {
+                    "type": panel_type,
+                    "title": title,
+                    "collapsible": collapsible,
+                },
             }
         )
         return self
@@ -753,18 +868,37 @@ class ContentEditor:
                     level = props.get("level", 1)
                     formatted_content.append(f"<h{level}>{content}</h{level}>\n")
                 elif block_type == "text":
-                    style = block.get("style", [])
-                    if isinstance(style, list):
-                        if "bold" in style:
-                            content = f"<strong>{content}</strong>"
-                        if "italic" in style:
-                            content = f"<em>{content}</em>"
-                    elif isinstance(style, dict):
-                        if style.get("bold"):
-                            content = f"<strong>{content}</strong>"
-                        if style.get("italic"):
-                            content = f"<em>{content}</em>"
-                    formatted_content.append(f"<p>{content}</p>\n")
+                    # Handle text with advanced properties
+                    if "properties" in block:
+                        style_attrs = []
+                        if "color" in props:
+                            style_attrs.append(f"color: {props['color']}")
+                        if "background" in props:
+                            style_attrs.append(
+                                f"background-color: {props['background']}"
+                            )
+                        if "alignment" in props:
+                            style_attrs.append(f"text-align: {props['alignment']}")
+                        if "indent" in props:
+                            style_attrs.append(f"margin-left: {props['indent']}em")
+
+                        style_attr = (
+                            f' style="{"; ".join(style_attrs)}"' if style_attrs else ""
+                        )
+                        formatted_content.append(f"<p{style_attr}>{content}</p>\n")
+                    else:
+                        style = block.get("style", [])
+                        if isinstance(style, list):
+                            if "bold" in style:
+                                content = f"<strong>{content}</strong>"
+                            if "italic" in style:
+                                content = f"<em>{content}</em>"
+                        elif isinstance(style, dict):
+                            if style.get("bold"):
+                                content = f"<strong>{content}</strong>"
+                            if style.get("italic"):
+                                content = f"<em>{content}</em>"
+                        formatted_content.append(f"<p>{content}</p>\n")
                 elif block_type == "list":
                     tag = "ol" if block.get("style") == "numbered" else "ul"
                     items = block.get("items", [])
@@ -773,6 +907,100 @@ class ContentEditor:
                         continue
                     formatted_items = "\n".join(f"<li>{item}</li>" for item in items)
                     formatted_content.append(f"<{tag}>\n{formatted_items}\n</{tag}>\n")
+                elif block_type == "task_list":
+                    formatted_content.append(
+                        '<ac:structured-macro ac:name="tasklist">\n<ac:task-list>'
+                    )
+                    for item in block.get("items", []):
+                        status = (
+                            "complete"
+                            if item.get("status") == "complete"
+                            else "incomplete"
+                        )
+                        assignee = item.get("assignee", "")
+                        due_date = item.get("due", "")
+                        formatted_content.append(
+                            f"<ac:task>\n"
+                            f"<ac:task-status>{status}</ac:task-status>\n"
+                            f'<ac:task-body>{item["text"]}</ac:task-body>\n'
+                            + (
+                                f"<ac:task-assignee>{assignee}</ac:task-assignee>\n"
+                                if assignee
+                                else ""
+                            )
+                            + (
+                                f"<ac:task-due-date>{due_date}</ac:task-due-date>\n"
+                                if due_date
+                                else ""
+                            )
+                            + "</ac:task>\n"
+                        )
+                    formatted_content.append(
+                        "</ac:task-list>\n</ac:structured-macro>\n"
+                    )
+                elif block_type == "image":
+                    source = props.get("source", "")
+                    alt = props.get("alt", "")
+                    caption = props.get("caption", "")
+                    alignment = props.get("alignment", "left")
+                    formatted_content.append(
+                        f'<ac:image ac:align="{alignment}">\n'
+                        f'<ri:attachment ri:filename="{source}"/>\n'
+                        + (f"<ac:alt-text>{alt}</ac:alt-text>\n" if alt else "")
+                        + (f"<ac:caption>{caption}</ac:caption>\n" if caption else "")
+                        + "</ac:image>\n"
+                    )
+                elif block_type == "video":
+                    source = props.get("source", "")
+                    thumbnail = props.get("thumbnail", "")
+                    formatted_content.append(
+                        f'<ac:structured-macro ac:name="video">\n'
+                        f'<ac:parameter ac:name="url">{source}</ac:parameter>\n'
+                        + (
+                            f'<ac:parameter ac:name="thumbnail">{thumbnail}</ac:parameter>\n'
+                            if thumbnail
+                            else ""
+                        )
+                        + "</ac:structured-macro>\n"
+                    )
+                elif block_type == "file":
+                    path = props.get("path", "")
+                    name = props.get("name", "")
+                    formatted_content.append(
+                        f'<ac:structured-macro ac:name="attachments">\n'
+                        f'<ac:parameter ac:name="upload">{path}</ac:parameter>\n'
+                        + (
+                            f'<ac:parameter ac:name="name">{name}</ac:parameter>\n'
+                            if name
+                            else ""
+                        )
+                        + "</ac:structured-macro>\n"
+                    )
+                elif block_type == "mention":
+                    user = props.get("user", "")
+                    formatted_content.append(
+                        f'<ac:link>\n<ri:user ri:username="{user}"/>\n</ac:link>\n'
+                    )
+                elif block_type == "emoji":
+                    name = props.get("name", "")
+                    formatted_content.append(f'<ac:emoticon ac:name="{name}"/>\n')
+                elif block_type == "expand":
+                    title = props.get("title", "")
+                    formatted_content.append(
+                        f'<ac:structured-macro ac:name="expand">\n'
+                        f'<ac:parameter ac:name="title">{title}</ac:parameter>\n'
+                        "<ac:rich-text-body>\n"
+                        f"<p>{content}</p>\n"
+                        "</ac:rich-text-body>\n"
+                        "</ac:structured-macro>\n"
+                    )
+                elif block_type == "divider":
+                    style = props.get("style", "single")
+                    width = props.get("width", "100%")
+                    alignment = props.get("alignment", "left")
+                    formatted_content.append(
+                        f'<hr style="border-style: {style}; width: {width}; text-align: {alignment};"/>\n'
+                    )
                 elif block_type == "code":
                     language = props.get("language", "")
                     formatted_content.append(
@@ -783,52 +1011,105 @@ class ContentEditor:
                         "]]></ac:plain-text-body>\n"
                         "</ac:structured-macro>\n"
                     )
+                elif block_type == "table":
+                    table_props = props or {}
+                    column_widths = table_props.get("column_widths", [])
+
+                    table_start = "<table"
+                    if column_widths:
+                        table_start += ' style="'
+                        table_start += "; ".join(
+                            f"width: {width}" for width in column_widths
+                        )
+                        table_start += '"'
+                    table_start += "><tbody>\n"
+
+                    formatted_content.append(table_start)
+
+                    # Handle headers
+                    headers = block.get("headers", [])
+                    if headers:
+                        header_row = "<tr>"
+                        for header in headers:
+                            if isinstance(header, dict):
+                                header_content = header["content"]
+                                header_props = header.get("properties", {})
+                                style_attrs = []
+                                if "background" in header_props:
+                                    style_attrs.append(
+                                        f"background-color: {header_props['background']}"
+                                    )
+                                if "alignment" in header_props:
+                                    style_attrs.append(
+                                        f"text-align: {header_props['alignment']}"
+                                    )
+                                style_attr = (
+                                    f' style="{"; ".join(style_attrs)}"'
+                                    if style_attrs
+                                    else ""
+                                )
+                                header_row += f"<th{style_attr}>{header_content}</th>"
+                            else:
+                                header_row += f"<th>{header}</th>"
+                        header_row += "</tr>\n"
+                        formatted_content.append(header_row)
+
+                    # Handle rows
+                    for row in block.get("rows", []):
+                        row_content = "<tr>"
+                        for cell in row:
+                            if isinstance(cell, dict):
+                                cell_content = cell["content"]
+                                cell_props = cell.get("properties", {})
+                                style_attrs = []
+                                if "background" in cell_props:
+                                    style_attrs.append(
+                                        f"background-color: {cell_props['background']}"
+                                    )
+                                if "alignment" in cell_props:
+                                    style_attrs.append(
+                                        f"text-align: {cell_props['alignment']}"
+                                    )
+                                style_attr = (
+                                    f' style="{"; ".join(style_attrs)}"'
+                                    if style_attrs
+                                    else ""
+                                )
+                                row_content += f"<td{style_attr}>{cell_content}</td>"
+                            else:
+                                row_content += f"<td>{cell}</td>"
+                        row_content += "</tr>\n"
+                        formatted_content.append(row_content)
+
+                    formatted_content.append("</tbody></table>\n")
                 elif block_type == "panel":
                     panel_type = props.get("type", "info")
                     title = props.get("title", "")
-                    formatted_content.append(
-                        f'<ac:structured-macro ac:name="panel">\n'
-                        f'<ac:parameter ac:name="type">{panel_type}</ac:parameter>\n'
-                        + (
-                            f'<ac:parameter ac:name="title">{title}</ac:parameter>\n'
-                            if title
-                            else ""
+                    collapsible = props.get("collapsible", False)
+                    icon = props.get("icon", "")
+
+                    macro_params = [
+                        f'<ac:parameter ac:name="type">{panel_type}</ac:parameter>'
+                    ]
+                    if title:
+                        macro_params.append(
+                            f'<ac:parameter ac:name="title">{title}</ac:parameter>'
                         )
-                        + "<ac:rich-text-body>\n"
+                    if collapsible:
+                        macro_params.append(
+                            '<ac:parameter ac:name="collapsible">true</ac:parameter>'
+                        )
+                    if icon:
+                        macro_params.append(
+                            f'<ac:parameter ac:name="icon">{icon}</ac:parameter>'
+                        )
+
+                    formatted_content.append(
+                        '<ac:structured-macro ac:name="panel">\n'
+                        + "\n".join(macro_params)
+                        + "\n<ac:rich-text-body>\n"
                         f"<p>{content}</p>\n"
                         "</ac:rich-text-body>\n"
-                        "</ac:structured-macro>\n"
-                    )
-                elif block_type == "table":
-                    headers = block.get("headers", [])
-                    rows = block.get("rows", [])
-                    if not (isinstance(headers, list) and isinstance(rows, list)):
-                        logger.warning(f"Invalid table format for block: {block}")
-                        continue
-                    table_content = ["<table><tbody>"]
-                    if headers:
-                        header_row = (
-                            "<tr>" + "".join(f"<th>{h}</th>" for h in headers) + "</tr>"
-                        )
-                        table_content.append(header_row)
-                    for row in rows:
-                        if not isinstance(row, list):
-                            continue
-                        table_row = (
-                            "<tr>"
-                            + "".join(f"<td>{cell}</td>" for cell in row)
-                            + "</tr>"
-                        )
-                        table_content.append(table_row)
-                    table_content.append("</tbody></table>")
-                    formatted_content.append("\n".join(table_content) + "\n")
-                elif block_type == "toc":
-                    min_level = props.get("min_level", 1)
-                    max_level = props.get("max_level", 7)
-                    formatted_content.append(
-                        f'<ac:structured-macro ac:name="toc">\n'
-                        f'<ac:parameter ac:name="minLevel">{min_level}</ac:parameter>\n'
-                        f'<ac:parameter ac:name="maxLevel">{max_level}</ac:parameter>\n'
                         "</ac:structured-macro>\n"
                     )
             except Exception as e:

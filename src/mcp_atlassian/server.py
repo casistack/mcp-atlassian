@@ -12,7 +12,7 @@ from pydantic import AnyUrl
 from .confluence import ConfluenceFetcher
 from .jira import JiraFetcher
 from .search import UnifiedSearch
-from .content import TemplateHandler
+from .content import TemplateHandler, ContentEditor, RichTextEditor
 
 # Configure logging
 logging.basicConfig(level=logging.disable())
@@ -33,6 +33,9 @@ TOOL_CATEGORIES = {
     "jira": "🎯 Jira",
     "templates": "📋 Templates",
 }
+
+# Initialize content editor
+content_editor = ContentEditor()
 
 
 @app.list_resources()
@@ -756,8 +759,8 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="create_confluence_page",
-            description="Create a new Confluence page with custom content.",
+            name="confluence_create_page_raw",
+            description="Advanced tool for creating Confluence pages using direct storage format. Only use this if you need low-level control over the page format. For normal page creation with rich formatting, use 'confluence_create_page' instead.",
             category=TOOL_CATEGORIES["confluence"],
             inputSchema={
                 "type": "object",
@@ -772,7 +775,7 @@ async def list_tools() -> list[Tool]:
                     },
                     "body": {
                         "type": "string",
-                        "description": "Content of the page in storage format",
+                        "description": "Content of the page in storage format (Confluence wiki markup)",
                     },
                     "parent_id": {
                         "type": "string",
@@ -789,6 +792,176 @@ async def list_tools() -> list[Tool]:
             },
             metadata={
                 "icon": "📄",
+                "status": "stable",
+                "version": "1.0",
+                "author": "MCP Atlassian Team",
+            },
+        ),
+        Tool(
+            name="confluence_create_page",
+            description="Create a new Confluence page with rich formatting. This is the recommended way to create pages with professional formatting. Supports headings, lists, tables, panels, code blocks, and more.",
+            category=TOOL_CATEGORIES["confluence"],
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "space_key": {
+                        "type": "string",
+                        "description": "Key of the space to create page in",
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Title for the new page",
+                    },
+                    "content": {
+                        "type": "array",
+                        "description": "Content blocks in rich text format",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "type": {
+                                    "type": "string",
+                                    "description": "Type of block: heading, text, list, table, panel, status, code, toc",
+                                    "enum": [
+                                        "heading",
+                                        "text",
+                                        "list",
+                                        "table",
+                                        "panel",
+                                        "status",
+                                        "code",
+                                        "toc",
+                                    ],
+                                },
+                                "content": {
+                                    "type": "string",
+                                    "description": "Content of the block (required for all types except list)",
+                                },
+                                "items": {
+                                    "type": "array",
+                                    "description": "Array of items for list blocks (required for list type)",
+                                    "items": {"type": "string"},
+                                },
+                                "properties": {
+                                    "type": "object",
+                                    "description": "Block properties",
+                                    "properties": {
+                                        "level": {
+                                            "type": "integer",
+                                            "description": "Heading level (1-6)",
+                                            "minimum": 1,
+                                            "maximum": 6,
+                                        },
+                                        "language": {
+                                            "type": "string",
+                                            "description": "Programming language for code blocks",
+                                        },
+                                        "type": {
+                                            "type": "string",
+                                            "description": "Panel type (info, note, warning)",
+                                            "enum": ["info", "note", "warning"],
+                                        },
+                                        "color": {
+                                            "type": "string",
+                                            "description": "Status color (grey, red, yellow, green, blue)",
+                                            "enum": [
+                                                "grey",
+                                                "red",
+                                                "yellow",
+                                                "green",
+                                                "blue",
+                                            ],
+                                        },
+                                        "title": {
+                                            "type": "string",
+                                            "description": "Title for panels",
+                                        },
+                                    },
+                                },
+                                "style": {
+                                    "type": "string",
+                                    "description": "List style (bullet or numbered)",
+                                    "enum": ["bullet", "numbered"],
+                                },
+                            },
+                            "required": ["type"],
+                            "allOf": [
+                                {
+                                    "if": {"properties": {"type": {"const": "list"}}},
+                                    "then": {"required": ["items"]},
+                                },
+                                {
+                                    "if": {
+                                        "properties": {
+                                            "type": {"not": {"const": "list"}}
+                                        }
+                                    },
+                                    "then": {"required": ["content"]},
+                                },
+                            ],
+                        },
+                    },
+                },
+                "required": ["space_key", "title", "content"],
+            },
+            metadata={
+                "icon": "✨",
+                "status": "stable",
+                "version": "1.0",
+                "author": "MCP Atlassian Team",
+            },
+        ),
+        Tool(
+            name="confluence_update_page",
+            description="Update an existing Confluence page with rich formatting.",
+            category=TOOL_CATEGORIES["confluence"],
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "page_id": {
+                        "type": "string",
+                        "description": "ID of the page to update",
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Title of the page",
+                    },
+                    "content": {
+                        "type": "array",
+                        "description": "Content blocks in rich text format",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "type": {
+                                    "type": "string",
+                                    "description": "Type of block: heading, text, list, table, panel, status, code, toc",
+                                    "enum": [
+                                        "heading",
+                                        "text",
+                                        "list",
+                                        "table",
+                                        "panel",
+                                        "status",
+                                        "code",
+                                        "toc",
+                                    ],
+                                },
+                                "content": {
+                                    "type": "string",
+                                    "description": "Content of the block",
+                                },
+                                "properties": {
+                                    "type": "object",
+                                    "description": "Block properties like level for headings, language for code, etc.",
+                                },
+                            },
+                            "required": ["type", "content"],
+                        },
+                    },
+                },
+                "required": ["page_id", "title", "content"],
+            },
+            metadata={
+                "icon": "✏️",
                 "status": "stable",
                 "version": "1.0",
                 "author": "MCP Atlassian Team",
@@ -1404,7 +1577,7 @@ async def call_tool(name: str, arguments: Any) -> Sequence[TextContent]:
                 )
             ]
 
-        elif name == "create_confluence_page":
+        elif name == "confluence_create_page_raw":
             doc = confluence_fetcher.create_page(
                 space_key=arguments["space_key"],
                 title=arguments["title"],
@@ -1434,6 +1607,156 @@ async def call_tool(name: str, arguments: Any) -> Sequence[TextContent]:
                     type="text",
                     text=json.dumps(
                         {"success": False, "error": "Failed to create page"},
+                        indent=2,
+                    ),
+                )
+            ]
+
+        elif name == "confluence_create_page":
+            try:
+                content = arguments.get("content", [])
+                if not isinstance(content, list):
+                    raise ValueError("Content must be a list of content blocks")
+
+                editor = content_editor.create_editor()
+
+                for block in content:
+                    if not isinstance(block, dict) or "type" not in block:
+                        continue
+
+                    block_type = block.get("type", "")
+                    content = block.get("content", "")
+                    props = block.get("properties", {})
+
+                    try:
+                        if block_type == "heading":
+                            editor.heading(content, props.get("level", 1))
+                        elif block_type == "text":
+                            if "style" in block:
+                                style = block["style"]
+                                if style.get("bold"):
+                                    content = editor.bold(content)
+                                if style.get("italic"):
+                                    content = editor.italic(content)
+                            editor.text(content)
+                        elif block_type == "list":
+                            items = block.get("items", [])
+                            if not isinstance(items, list):
+                                continue
+                            if block.get("style") == "numbered":
+                                editor.numbered_list(items)
+                            else:
+                                editor.bullet_list(items)
+                        elif block_type == "table":
+                            headers = block.get("headers", [])
+                            rows = block.get("rows", [])
+                            if isinstance(headers, list) and isinstance(rows, list):
+                                editor.table(headers, rows)
+                        elif block_type == "panel":
+                            editor.panel(
+                                content,
+                                props.get("type", "info"),
+                                props.get("title", ""),
+                            )
+                        elif block_type == "status":
+                            editor.status(content, props.get("color", "grey"))
+                        elif block_type == "code":
+                            editor.code(content, props.get("language", ""))
+                        elif block_type == "toc":
+                            editor.table_of_contents(
+                                props.get("min_level", 1), props.get("max_level", 7)
+                            )
+                    except Exception as e:
+                        logger.error(f"Error processing block type {block_type}: {e}")
+                        continue
+
+                # Create the page and get the result
+                result = content_editor.create_page(
+                    arguments["space_key"], arguments["title"], editor
+                )
+
+                return [
+                    TextContent(
+                        type="text",
+                        text=json.dumps(
+                            {
+                                "success": True,
+                                "message": f"Page '{arguments['title']}' created successfully",
+                                "page_info": result,
+                            },
+                            indent=2,
+                        ),
+                    )
+                ]
+            except Exception as e:
+                return [
+                    TextContent(
+                        type="text",
+                        text=json.dumps(
+                            {
+                                "success": False,
+                                "error": f"Failed to create page: {str(e)}",
+                            },
+                            indent=2,
+                        ),
+                    )
+                ]
+
+        elif name == "confluence_update_page":
+            content = arguments["content"]
+            editor = content_editor.create_editor()
+            for block in content:
+                if block["type"] == "heading":
+                    editor.heading(
+                        block["content"], block.get("properties", {}).get("level", 1)
+                    )
+                elif block["type"] == "text":
+                    if "style" in block:
+                        if "bold" in block["style"]:
+                            editor.bold(block["content"])
+                        elif "italic" in block["style"]:
+                            editor.italic(block["content"])
+                    else:
+                        editor.text(block["content"])
+                elif block["type"] == "list":
+                    if block.get("style") == "numbered":
+                        editor.numbered_list(block["items"])
+                    else:
+                        editor.bullet_list(block["items"])
+                elif block["type"] == "table":
+                    editor.table(block["headers"], block["rows"])
+                elif block["type"] == "panel":
+                    props = block.get("properties", {})
+                    editor.panel(
+                        block["content"],
+                        props.get("type", "info"),
+                        props.get("title", ""),
+                    )
+                elif block["type"] == "status":
+                    props = block.get("properties", {})
+                    editor.status(block["content"], props.get("color", "grey"))
+                elif block["type"] == "code":
+                    props = block.get("properties", {})
+                    editor.code(block["content"], props.get("language", ""))
+                elif block["type"] == "toc":
+                    props = block.get("properties", {})
+                    editor.table_of_contents(
+                        props.get("min_level", 1), props.get("max_level", 7)
+                    )
+
+            content_editor.update_page(
+                arguments["page_id"], arguments["title"], editor.get_content()
+            )
+
+            # Return success response
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {
+                            "success": True,
+                            "message": f"Page '{arguments['title']}' updated successfully",
+                        },
                         indent=2,
                     ),
                 )

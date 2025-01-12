@@ -89,11 +89,109 @@ class MarkupFormatter:
         return f"{{status:colour={color}|title={text}}}\n\n"
 
 
-class ContentEditor:
-    """High-level interface for AI to edit Confluence content."""
+class RichTextEditor:
+    """Abstracts Confluence's rich text editing capabilities."""
 
     def __init__(self):
-        """Initialize the content editor."""
+        self._content = []
+
+    def get_content(self) -> list:
+        """Get the current content."""
+        return self._content
+
+    def status(self, text: str, color: str = "grey") -> "RichTextEditor":
+        """Add a status macro."""
+        self._content.append(
+            {"type": "status", "content": text, "properties": {"color": color}}
+        )
+        return self
+
+    def text(self, content: str) -> "RichTextEditor":
+        """Add normal text."""
+        self._content.append({"type": "text", "content": content})
+        return self
+
+    def bold(self, text: str) -> "RichTextEditor":
+        """Make text bold."""
+        self._content.append({"type": "text", "content": text, "style": ["bold"]})
+        return self
+
+    def italic(self, text: str) -> "RichTextEditor":
+        """Make text italic."""
+        self._content.append({"type": "text", "content": text, "style": ["italic"]})
+        return self
+
+    def bullet_list(self, items: list[str]) -> "RichTextEditor":
+        """Create a bullet list."""
+        self._content.append({"type": "list", "style": "bullet", "items": items})
+        return self
+
+    def numbered_list(self, items: list[str]) -> "RichTextEditor":
+        """Create a numbered list."""
+        self._content.append({"type": "list", "style": "numbered", "items": items})
+        return self
+
+    def table(self, headers: list[str], rows: list[list[str]]) -> "RichTextEditor":
+        """Create a table."""
+        self._content.append({"type": "table", "headers": headers, "rows": rows})
+        return self
+
+    def heading(self, text: str, level: int = 1) -> "RichTextEditor":
+        """Add a heading."""
+        self._content.append(
+            {"type": "heading", "content": text, "properties": {"level": level}}
+        )
+        return self
+
+    def quote(self, text: str) -> "RichTextEditor":
+        """Add a quote."""
+        self._content.append({"type": "quote", "content": text})
+        return self
+
+    def code(self, code: str, language: str = "") -> "RichTextEditor":
+        """Add a code block."""
+        self._content.append(
+            {"type": "code", "content": code, "properties": {"language": language}}
+        )
+        return self
+
+    def link(self, text: str, url: str) -> "RichTextEditor":
+        """Add a link."""
+        self._content.append(
+            {"type": "link", "content": text, "properties": {"url": url}}
+        )
+        return self
+
+    def panel(
+        self, content: str, panel_type: str = "info", title: str = ""
+    ) -> "RichTextEditor":
+        """Add a panel."""
+        self._content.append(
+            {
+                "type": "panel",
+                "content": content,
+                "properties": {"type": panel_type, "title": title},
+            }
+        )
+        return self
+
+    def table_of_contents(
+        self, min_level: int = 1, max_level: int = 7
+    ) -> "RichTextEditor":
+        """Add a table of contents."""
+        self._content.append(
+            {
+                "type": "toc",
+                "properties": {"min_level": min_level, "max_level": max_level},
+            }
+        )
+        return self
+
+
+class ContentEditor:
+    """High-level interface for editing Confluence content."""
+
+    def __init__(self):
         self.confluence = None
 
     def _ensure_confluence(self, space_key: str):
@@ -422,57 +520,44 @@ class ContentEditor:
             minor_edit=True,
         )
 
+    def create_editor(self) -> RichTextEditor:
+        """Create a new rich text editor instance."""
+        return RichTextEditor()
+
     def create_page(
-        self, space_key: str, title: str, content: List[Dict[str, Any]]
-    ) -> None:
-        """Create a new page with structured content.
+        self, space_key: str, title: str, editor: RichTextEditor
+    ) -> Dict[str, Any]:
+        """Create a new page using the rich text editor content.
 
         Args:
             space_key: The space key where to create the page
             title: The title of the new page
-            content: List of content blocks to add to the page
+            editor: RichTextEditor instance with the page content
+
+        Returns:
+            Dict containing the created page information
         """
+        formatted_content = self.create_rich_content(editor.get_content())
         self._ensure_confluence(space_key)
 
-        # Build the page content in storage format
-        page_content = ""
-
-        for item in content:
-            if item["type"] == "status":
-                page_content += f"""
-<ac:structured-macro ac:name="status">
-    <ac:parameter ac:name="colour">{item["color"]}</ac:parameter>
-    <ac:parameter ac:name="title">{item["text"]}</ac:parameter>
-</ac:structured-macro>\n"""
-
-            elif item["type"] == "panel":
-                page_content += f"""
-<ac:structured-macro ac:name="panel">
-    <ac:parameter ac:name="title">{item.get("title", "")}</ac:parameter>
-    <ac:parameter ac:name="type">{item.get("panel_type", "info")}</ac:parameter>
-    <ac:rich-text-body>
-        <p>{item["content"]}</p>
-    </ac:rich-text-body>
-</ac:structured-macro>\n"""
-
-            elif item["type"] == "text":
-                page_content += f"<p>{item['content']}</p>\n\n"
-
-            elif item["type"] == "toc":
-                page_content += f"""
-<ac:structured-macro ac:name="toc">
-    <ac:parameter ac:name="minLevel">{item.get("min_level", 1)}</ac:parameter>
-    <ac:parameter ac:name="maxLevel">{item.get("max_level", 7)}</ac:parameter>
-</ac:structured-macro>\n"""
-
-        # Create the page using the correct parameters
-        return self.confluence.confluence.create_page(
+        # Create the page
+        result = self.confluence.confluence.create_page(
             space=space_key,
             title=title,
-            body=page_content,
+            body=formatted_content,
             representation="storage",
             editor="v2",
         )
+
+        # Return page information
+        return {
+            "page_id": result.get("id"),
+            "title": result.get("title"),
+            "space_key": space_key,
+            "url": result.get("_links", {}).get("base")
+            + result.get("_links", {}).get("webui", ""),
+            "version": result.get("version", {}).get("number"),
+        }
 
     def format_text(self, text: str, formatting: List[str]) -> str:
         """Apply formatting to text.
@@ -641,6 +726,74 @@ class ContentEditor:
             representation="storage",
             minor_edit=True,
         )
+
+    def create_rich_content(self, content_blocks: List[Dict[str, Any]]) -> str:
+        """Convert content blocks to Confluence storage format."""
+        formatted_content = []
+
+        for block in content_blocks:
+            if not isinstance(block, dict) or "type" not in block:
+                continue
+
+            block_type = block.get("type", "")
+            content = block.get("content", "")
+            props = block.get("properties", {})
+
+            try:
+                if block_type == "status":
+                    color = props.get("color", "grey")
+                    formatted_content.append(
+                        f'<ac:structured-macro ac:name="status">\n'
+                        f'<ac:parameter ac:name="colour">{color}</ac:parameter>\n'
+                        f'<ac:parameter ac:name="title">{content}</ac:parameter>\n'
+                        "</ac:structured-macro>\n"
+                    )
+                elif block_type == "heading":
+                    level = props.get("level", 1)
+                    formatted_content.append(f"<h{level}>{content}</h{level}>\n")
+                elif block_type == "text":
+                    style = block.get("style", [])
+                    if "bold" in style:
+                        content = f"<strong>{content}</strong>"
+                    if "italic" in style:
+                        content = f"<em>{content}</em>"
+                    formatted_content.append(f"<p>{content}</p>\n")
+                elif block_type == "list":
+                    tag = "ol" if block.get("style") == "numbered" else "ul"
+                    items = block.get("items", [])
+                    formatted_items = "\n".join(f"<li>{item}</li>" for item in items)
+                    formatted_content.append(f"<{tag}>\n{formatted_items}\n</{tag}>\n")
+                elif block_type == "code":
+                    language = props.get("language", "")
+                    formatted_content.append(
+                        f'<ac:structured-macro ac:name="code">\n'
+                        f'<ac:parameter ac:name="language">{language}</ac:parameter>\n'
+                        "<ac:plain-text-body><![CDATA[\n"
+                        f"{content}\n"
+                        "]]></ac:plain-text-body>\n"
+                        "</ac:structured-macro>\n"
+                    )
+                elif block_type == "panel":
+                    panel_type = props.get("type", "info")
+                    title = props.get("title", "")
+                    formatted_content.append(
+                        f'<ac:structured-macro ac:name="panel">\n'
+                        f'<ac:parameter ac:name="type">{panel_type}</ac:parameter>\n'
+                        + (
+                            f'<ac:parameter ac:name="title">{title}</ac:parameter>\n'
+                            if title
+                            else ""
+                        )
+                        + "<ac:rich-text-body>\n"
+                        f"<p>{content}</p>\n"
+                        "</ac:rich-text-body>\n"
+                        "</ac:structured-macro>\n"
+                    )
+            except Exception as e:
+                logger.error(f"Error formatting block type {block_type}: {e}")
+                continue
+
+        return "\n".join(formatted_content)
 
 
 class TemplateHandler:

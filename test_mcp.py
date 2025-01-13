@@ -14,6 +14,7 @@ from mcp_atlassian.content import ContentEditor, RichTextEditor
 from mcp_atlassian.config import Config
 from mcp_atlassian.server import Tool, list_tools, call_tool, TextContent
 from mcp_atlassian.jira import JiraFetcher
+from mcp_atlassian.tool_handlers.confluence_tools import handle_confluence_tools
 
 # Configure logging
 logging.basicConfig(
@@ -435,8 +436,68 @@ async def test_create_from_confluence_template():
         print(traceback.format_exc())
 
 
+async def test_confluence_update_page():
+    """Test updating a Confluence page with rich formatting."""
+    print("\n1. Testing update with rich formatting...")
+    page_id = "10651592"  # Using existing page ID
+    print(f"\nAttempting to update page {page_id}...")
+
+    # Test updating with rich formatting
+    result = await call_tool(
+        "confluence_update_page",
+        {
+            "page_id": page_id,
+            "title": "Test Update Page",
+            "content": [
+                {
+                    "type": "heading",
+                    "content": "Test Update",
+                    "properties": {"level": 1},
+                },
+                {"type": "text", "content": "This is a test update."},
+                {
+                    "type": "list",
+                    "style": "bullet",
+                    "items": ["Item 1", "Item 2", "Item 3"],
+                },
+                {
+                    "type": "panel",
+                    "content": "This is a panel",
+                    "properties": {"type": "info", "title": "Info Panel"},
+                },
+                {
+                    "type": "code",
+                    "content": "print('Hello World')",
+                    "properties": {"language": "python"},
+                },
+            ],
+        },
+    )
+    formatted_result = format_tool_result(result)
+    print(f"Update result: {formatted_result}")
+
+    # Test case 2: Update with invalid content format
+    print("\n2. Testing update with invalid content format...")
+    try:
+        invalid_result = await call_tool(
+            "confluence_update_page",
+            {
+                "page_id": "invalid_id",
+                "title": "Test Invalid Update",
+                "content": "Invalid content format",  # This should fail as content needs to be a list
+            },
+        )
+        formatted_invalid_result = format_tool_result(invalid_result)
+        print(f"Invalid content format result: {formatted_invalid_result}")
+    except Exception as e:
+        print(f"Expected error occurred: {str(e)}")
+
+    return True
+
+
 if __name__ == "__main__":
-    asyncio.run(test_unified_search())
-    asyncio.run(test_get_confluence_templates())
-    asyncio.run(test_get_jira_templates())
-    asyncio.run(test_create_from_confluence_template())
+    # asyncio.run(test_unified_search())
+    # asyncio.run(test_get_confluence_templates())
+    # asyncio.run(test_get_jira_templates())
+    # asyncio.run(test_create_from_confluence_template())
+    asyncio.run(test_confluence_update_page())

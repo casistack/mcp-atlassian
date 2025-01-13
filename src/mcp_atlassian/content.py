@@ -356,17 +356,70 @@ class ContentEditor:
         body: str,
         representation: str = "storage",
         minor_edit: bool = False,
-    ) -> None:
+        version_comment: Optional[str] = None,
+        full_width: bool = False,
+    ) -> Optional[Dict[str, Any]]:
         """Update a page with new content."""
-        self.confluence.confluence.update_page(
-            page_id=page_id,
-            title=title,
-            body=body,
-            type="page",
-            representation=representation,
-            minor_edit=minor_edit,
-            full_width=False,
-        )
+        try:
+            print(f"\nAttempting to get page with ID: {page_id}")
+            # Get current page version
+            current_page = self.confluence.confluence.get_page_by_id(
+                page_id=page_id, expand="version,body.storage,space"
+            )
+            print(f"Retrieved page: {current_page}")
+
+            if not current_page:
+                logger.error(f"Page {page_id} not found")
+                return None
+
+            # Get the current version number
+            version = current_page["version"]["number"]
+            print(f"Current version: {version}")
+
+            # Always use the original title when updating
+            original_title = current_page["title"]
+
+            try:
+                # Use the SDK's update_page method
+                updated_page = self.confluence.confluence.update_page(
+                    page_id=page_id,
+                    title=original_title,  # Use original title to avoid conflicts
+                    body=body,
+                    type="page",
+                    representation=representation,
+                    minor_edit=minor_edit,
+                    version_comment=version_comment,
+                    full_width=full_width,
+                )
+                print(f"Update response: {updated_page}")
+
+                if updated_page:
+                    # Get the updated page to ensure we have the latest version
+                    latest_page = self.confluence.confluence.get_page_by_id(
+                        page_id=page_id, expand="version,space"
+                    )
+                    print(f"Retrieved updated page: {latest_page}")
+
+                    if latest_page:
+                        return {
+                            "page_id": latest_page["id"],
+                            "title": latest_page["title"],
+                            "space_key": latest_page.get("space", {}).get("key"),
+                            "version": latest_page.get("version", {}).get("number"),
+                            "url": f"{self.confluence.confluence.url}/spaces/{latest_page.get('space', {}).get('key')}/pages/{latest_page['id']}",
+                        }
+
+                return None
+            except Exception as e:
+                error_msg = f"Error updating page: {str(e)}"
+                logger.error(error_msg)
+                print(f"Exception during update: {str(e)}")
+                return None
+
+        except Exception as e:
+            logger.error(f"Error updating page: {e}")
+            print(f"Exception during update: {str(e)}")
+            return None
 
     def add_list_item(
         self,

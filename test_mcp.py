@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 import json
 from typing import Any, Optional
+import time
 
 # Add the src directory to the Python path
 sys.path.append(str(Path(__file__).parent))
@@ -340,24 +341,35 @@ async def test_create_from_confluence_template():
             print("No templates found for testing")
             return
 
-        # Use the first available template
-        template = templates[0]
-        template_id = template["id"]
+        # Find the Product Requirements template
+        product_req_template = next(
+            (t for t in templates if t["name"].lower() == "product requirements"),
+            templates[0],  # Fallback to first template if not found
+        )
+        template_id = product_req_template["id"]
 
-        # Test Case 1: Basic template usage with parameters
-        print("\n2. Testing basic template usage with parameters...")
+        # Generate unique timestamp for test titles
+        timestamp = int(time.time())
+
+        # Test Case 1: Complex template usage with flattened parameters
+        print("\n2. Testing complex template usage with flattened parameters...")
         try:
             result = await call_tool(
                 "create_from_confluence_template",
                 {
                     "template_id": template_id,
                     "space_key": "IS",
-                    "title": "Test Template Page",
+                    "title": f"Test Product Requirements Document {timestamp}",
                     "template_parameters": {
-                        "summary": "Test summary",
-                        "description": "Test description",
-                        "owner": "Test Owner",
-                        "status": "In Progress",
+                        "product_name": "Test Product",
+                        "product_owner": "Test Owner",
+                        "product_description": "A test product for automated testing",
+                        "requirement_1": "First test requirement (High Priority)",
+                        "requirement_2": "Second test requirement (Medium Priority)",
+                        "stakeholder_1": "Test Team (Development)",
+                        "stakeholder_2": "Test Manager (Product Owner)",
+                        "overview_section": "Test product overview section",
+                        "features_section": "Test product features section",
                     },
                 },
             )
@@ -377,7 +389,7 @@ async def test_create_from_confluence_template():
                     print("Cleanup complete")
 
         except Exception as e:
-            print(f"Error in basic template usage: {str(e)}")
+            print(f"Error in complex template usage: {str(e)}")
             import traceback
 
             print(traceback.format_exc())
@@ -390,7 +402,7 @@ async def test_create_from_confluence_template():
                 {
                     "template_id": template_id,
                     "space_key": "IS",
-                    "title": "Test Template Page - No Params",
+                    "title": f"Test Template Page - No Params {timestamp}",
                 },
             )
             formatted_result = format_tool_result(result)
@@ -420,7 +432,7 @@ async def test_create_from_confluence_template():
                 {
                     "template_id": "invalid_template_id",
                     "space_key": "IS",
-                    "title": "Test Template Page - Invalid Template",
+                    "title": f"Test Template Page - Invalid Template {timestamp}",
                 },
             )
             formatted_result = format_tool_result(result)

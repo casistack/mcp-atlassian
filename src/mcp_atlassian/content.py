@@ -1231,24 +1231,27 @@ class TemplateHandler:
         """Validate that provided parameters match template requirements.
         Now more flexible - will use default/empty values for missing parameters."""
         if not provided_parameters:
-            # Always return True - we'll handle missing parameters with empty strings
+            # Create empty parameters for all required variables
+            logger.info("No parameters provided, using empty values for all variables")
             return True, ""
 
-        # Log missing variables but don't treat them as errors
-        missing_vars = [
-            var for var in template_variables if var not in provided_parameters
-        ]
+        # Create a set of required variables from the template
+        required_vars = set(template_variables.keys())
+
+        # Check for missing required variables but don't fail
+        missing_vars = required_vars - set(provided_parameters.keys())
         if missing_vars:
             logger.info(
-                f"Note: The following template variables will be empty: {', '.join(missing_vars)}"
+                f"Note: The following template variables will use default empty values: {', '.join(missing_vars)}"
             )
 
-        # Only validate the type of provided parameters
+        # Validate the types of provided parameters
         for key, value in provided_parameters.items():
-            if not isinstance(value, (str, int, float, bool, list, dict)):
+            # Allow more complex types including lists and dictionaries
+            if not isinstance(value, (str, int, float, bool, list, dict, type(None))):
                 return (
                     False,
-                    f"Invalid type for parameter '{key}'. Must be a string, number, boolean, list, or dictionary.",
+                    f"Invalid type for parameter '{key}'. Must be a string, number, boolean, list, dictionary, or None.",
                 )
 
         return True, ""
@@ -1275,6 +1278,30 @@ class TemplateHandler:
         if not template_parameters:
             template_parameters = {}
 
+        # Flatten complex parameters into simple key-value pairs
+        flattened_params = {}
+        for key, value in template_parameters.items():
+            if isinstance(value, (str, int, float, bool)):
+                flattened_params[key] = str(value)
+            elif isinstance(value, (list, dict)):
+                # Handle sections and structured content
+                if key == "sections":
+                    for i, section in enumerate(value):
+                        section_num = i + 1
+                        flattened_params[f"section_{section_num}_title"] = section.get(
+                            "title", ""
+                        )
+                        if "content" in section:
+                            content_str = self._format_section_content(
+                                section["content"]
+                            )
+                            flattened_params[f"section_{section_num}_content"] = (
+                                content_str
+                            )
+                else:
+                    # Convert complex values to formatted string
+                    flattened_params[key] = self._format_complex_value(value)
+
         # Parse HTML content
         soup = BeautifulSoup(content, "html.parser")
 
@@ -1282,12 +1309,12 @@ class TemplateHandler:
         def process_text(text: str) -> str:
             processed = text
             # Handle provided parameters
-            for key, value in template_parameters.items():
+            for key, value in flattened_params.items():
                 patterns = [
                     f"${{{key}}}",  # ${variable}
                     f"@{key}@",  # @variable@
                     f"{{{key}}}",  # {variable}
-                    key,  # Direct match for HTML content
+                    key,  # Direct match
                 ]
                 for pattern in patterns:
                     processed = processed.replace(pattern, str(value))
@@ -1299,7 +1326,7 @@ class TemplateHandler:
                 "script",
                 "style",
             ]:  # Skip script and style tags
-                new_text = process_text(text.string)
+                new_text = process_text(text.string or "")
                 text.replace_with(new_text)
 
         # Convert back to string
@@ -1308,7 +1335,7 @@ class TemplateHandler:
         # Handle any remaining template variables with empty strings
         variables = self.analyze_template_structure(processed_content)
         for var in variables:
-            if var not in template_parameters:
+            if var not in flattened_params:
                 patterns = [
                     f"${{{var}}}",  # ${variable}
                     f"@{var}@",  # @variable@
@@ -1319,6 +1346,57 @@ class TemplateHandler:
                     processed_content = processed_content.replace(pattern, "")
 
         return processed_content
+
+    def _format_section_content(self, content_list: List[Dict]) -> str:
+        """Format a list of content blocks into HTML."""
+        formatted = []
+        for item in content_list:
+            if item["type"] == "text":
+                formatted.append(f"<p>{item['content']}</p>")
+            elif item["type"] == "panel":
+                panel_type = item.get("style", "info")
+                formatted.append(
+                    f'<ac:structured-macro ac:name="panel">'
+                    f'<ac:parameter ac:name="type">{panel_type}</ac:parameter>'
+                    f'<ac:rich-text-body><p>{item["content"]}</p></ac:rich-text-body>'
+                    f"</ac:structured-macro>"
+                )
+            elif item["type"] == "table":
+                table = item["content"]
+                formatted.append("<table><tbody>")
+                # Add headers
+                if "columns" in table:
+                    formatted.append("<tr>")
+                    for header in table["columns"]:
+                        formatted.append(f"<th>{header}</th>")
+                    formatted.append("</tr>")
+                # Add rows
+                if "rows" in table:
+                    for row in table["rows"]:
+                        formatted.append("<tr>")
+                        for cell in row:
+                            formatted.append(f"<td>{cell}</td>")
+                        formatted.append("</tr>")
+                formatted.append("</tbody></table>")
+            elif item["type"] == "code":
+                language = item.get("language", "")
+                formatted.append(
+                    f'<ac:structured-macro ac:name="code">'
+                    f'<ac:parameter ac:name="language">{language}</ac:parameter>'
+                    f'<ac:plain-text-body><![CDATA[{item["content"]}]]></ac:plain-text-body>'
+                    f"</ac:structured-macro>"
+                )
+        return "\n".join(formatted)
+
+    def _format_complex_value(self, value: Any) -> str:
+        """Format complex values (lists, dicts) into a readable string format."""
+        if isinstance(value, list):
+            if all(isinstance(x, (str, int, float, bool)) for x in value):
+                return ", ".join(str(x) for x in value)
+            return "\n".join(f"- {str(x)}" for x in value)
+        elif isinstance(value, dict):
+            return "\n".join(f"{k}: {str(v)}" for k, v in value.items())
+        return str(value)
 
     def create_from_template(
         self,

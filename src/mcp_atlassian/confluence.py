@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 from pathlib import Path
 from typing import BinaryIO, List, Optional, Union
 
@@ -56,6 +56,80 @@ class ConfluenceFetcher:
     def get_spaces(self, start: int = 0, limit: int = 10):
         """Get all available spaces."""
         return self.confluence.get_all_spaces(start=start, limit=limit)
+
+    def get_space_key_by_name(self, space_name: str) -> Optional[str]:
+        """Get the correct space key for a given space name/display name.
+
+        Args:
+            space_name: The display name or partial name of the space
+
+        Returns:
+            The correct space key if found, None otherwise
+        """
+        try:
+            spaces = self.get_spaces()
+            if not spaces or "results" not in spaces:
+                self.logger.error("Failed to fetch spaces")
+                return None
+
+            # First try exact match
+            for space in spaces["results"]:
+                if space.get("name") == space_name:
+                    return space.get("key")
+
+            # Then try case-insensitive match
+            for space in spaces["results"]:
+                if space.get("name", "").lower() == space_name.lower():
+                    return space.get("key")
+
+            # Finally try partial match
+            for space in spaces["results"]:
+                if space_name.lower() in space.get("name", "").lower():
+                    return space.get("key")
+
+            self.logger.warning(f"No space found matching name: {space_name}")
+            return None
+
+        except Exception as e:
+            self.logger.error(f"Error finding space key: {str(e)}")
+            return None
+
+    def validate_space_key(self, space_key: str) -> Tuple[bool, Optional[str]]:
+        """Validate a space key and return the correct one if needed.
+
+        Args:
+            space_key: The space key to validate
+
+        Returns:
+            Tuple of (is_valid, correct_key)
+            - is_valid: Whether the provided key is valid
+            - correct_key: The correct key if found, None otherwise
+        """
+        try:
+            # If it's already a valid key, verify it exists
+            spaces = self.get_spaces()
+            if not spaces or "results" not in spaces:
+                self.logger.error("Failed to fetch spaces")
+                return False, None
+
+            # Check if the key exists directly
+            for space in spaces["results"]:
+                if space.get("key") == space_key:
+                    return True, space_key
+
+            # If not found, try to find it by name
+            correct_key = self.get_space_key_by_name(space_key)
+            if correct_key:
+                return False, correct_key
+
+            self.logger.warning(
+                f"Invalid space key and no matching space found: {space_key}"
+            )
+            return False, None
+
+        except Exception as e:
+            self.logger.error(f"Error validating space key: {str(e)}")
+            return False, None
 
     def _get_page_url(self, space_key: str, page_id: str) -> str:
         """Construct the correct URL for a Confluence page."""
@@ -234,6 +308,19 @@ class ConfluenceFetcher:
             self.logger.debug(
                 f"Creating page with title: {title} in space: {space_key}"
             )
+
+            # Validate space key first
+            is_valid, correct_key = self.validate_space_key(space_key)
+            if not is_valid:
+                if correct_key:
+                    self.logger.info(
+                        f"Using correct space key: {correct_key} instead of: {space_key}"
+                    )
+                    space_key = correct_key
+                else:
+                    self.logger.error(f"Invalid space key: {space_key}")
+                    return None
+
             self.logger.debug(f"Content representation: {representation}")
 
             if template_id:

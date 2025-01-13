@@ -284,6 +284,30 @@ def handle_confluence_tools(
 
         elif name == "confluence_create_page":
             try:
+                space_key = arguments["space_key"]
+
+                # Validate space key first
+                is_valid, correct_key = confluence_fetcher.validate_space_key(space_key)
+                if not is_valid:
+                    if correct_key:
+                        logger.info(
+                            f"Using correct space key: {correct_key} instead of: {space_key}"
+                        )
+                        space_key = correct_key
+                    else:
+                        return [
+                            TextContent(
+                                type="text",
+                                text=json.dumps(
+                                    {
+                                        "success": False,
+                                        "error": f"Invalid space key: {space_key}. Please check the space name or key.",
+                                    },
+                                    indent=2,
+                                ),
+                            )
+                        ]
+
                 content = arguments.get("content", [])
                 if not isinstance(content, list):
                     raise ValueError("Content must be a list of content blocks")

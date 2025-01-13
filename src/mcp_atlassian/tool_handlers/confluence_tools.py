@@ -165,30 +165,19 @@ def handle_confluence_tools(
             ]
 
         elif name == "delete_confluence_page":
-            doc = confluence_fetcher.delete_page(arguments["page_id"])
-            if doc:
-                return [
-                    TextContent(
-                        type="text",
-                        text=json.dumps(
-                            {
-                                "success": True,
-                                "key": doc.metadata["key"],
-                                "title": doc.metadata["title"],
-                                "status": doc.metadata["status"],
-                                "type": doc.metadata["type"],
-                                "url": doc.metadata["link"],
-                                "description": doc.page_content,
-                            },
-                            indent=2,
-                        ),
-                    )
-                ]
+            success = confluence_fetcher.delete_page(arguments["page_id"])
             return [
                 TextContent(
                     type="text",
                     text=json.dumps(
-                        {"success": False, "error": "Failed to delete page"},
+                        {
+                            "success": success,
+                            "message": (
+                                "Page deleted successfully"
+                                if success
+                                else "Failed to delete page"
+                            ),
+                        },
                         indent=2,
                     ),
                 )

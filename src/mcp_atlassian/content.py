@@ -2,6 +2,8 @@ from typing import Dict, List, Any, Tuple, Optional
 import logging
 from bs4 import BeautifulSoup
 
+from mcp_atlassian.types import Document
+
 # Configure logging
 logger = logging.getLogger("mcp-atlassian")
 
@@ -1114,6 +1116,36 @@ class TemplateHandler:
         self._ensure_confluence(space_key or "")
         return self.confluence.confluence.get_blueprint_templates(space_key)
 
+    def _process_template_content(
+        self, content: str, template_parameters: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """Process template content by replacing variables with provided values.
+
+        Args:
+            content: The template content
+            template_parameters: Dictionary of parameter values to replace in the template
+
+        Returns:
+            Processed content with variables replaced
+        """
+        if not template_parameters:
+            return content
+
+        processed_content = content
+        for key, value in template_parameters.items():
+            # Handle different variable formats that might be in the template
+            variable_formats = [
+                f"${key}",  # ${variable}
+                f"${{key}}",  # ${variable}
+                f"@{key}@",  # @variable@
+                f"{{{key}}}",  # {variable}
+            ]
+
+            for var_format in variable_formats:
+                processed_content = processed_content.replace(var_format, str(value))
+
+        return processed_content
+
     def create_from_template(
         self,
         space_key: str,
@@ -1147,49 +1179,116 @@ class TemplateHandler:
                 return {"success": False, "error": f"Template {template_id} not found"}
 
             try:
-                # Create page from template using direct API call
-                logger.debug(f"Creating page with template_id: {template_id}")
-                logger.debug(f"Template parameters: {template_parameters}")
+                # Check if a page with this title already exists
+                existing_page = self.confluence.get_page_by_title(space_key, title)
+                if existing_page:
+                    # Append timestamp to make title unique
+                    from datetime import datetime
 
-                # Use the appropriate template creation method based on type
+                    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+                    title = f"{title} {timestamp}"
+                    logger.debug(f"Title already exists, using new title: {title}")
+
                 if template_info["type"] == "blueprint":
-                    logger.debug("Using blueprint template creation")
-                    doc = self.confluence.create_page(
+                    # For blueprint templates, we need to:
+                    # 1. Get the template content
+                    template_content = self.confluence.get_content_template(template_id)
+                    if not template_content:
+                        logger.error("Failed to get blueprint template content")
+                        return {
+                            "success": False,
+                            "error": "Failed to get blueprint template content",
+                        }
+
+                    # 2. Create the page with the template content
+                    page = self.confluence.create_page(
                         space_key=space_key,
                         title=title,
-                        body="",
-                        template_id=template_id,
-                        template_parameters=template_parameters,
-                        representation="storage",
-                    )
-                else:
-                    logger.debug("Using content template creation")
-                    doc = self.confluence.create_page(
-                        space_key=space_key,
-                        title=title,
-                        body="",
-                        template_id=template_id,
-                        template_parameters=template_parameters,
+                        body=template_content.get("body", {})
+                        .get("storage", {})
+                        .get("value", ""),
                         representation="storage",
                     )
 
-                if doc:
-                    logger.debug(f"Successfully created page: {doc.metadata}")
+                    if (
+                        not page
+                        or not isinstance(page, Document)
+                        or "page_id" not in page.metadata
+                    ):
+                        logger.error("Failed to create page from blueprint template")
+                        return {
+                            "success": False,
+                            "error": "Failed to create page from blueprint template",
+                        }
+
+                    # Get the created page content
+                    doc = self.confluence.get_page_content(page.metadata["page_id"])
+                    if doc:
+                        logger.debug(f"Successfully created page: {doc.metadata}")
+                        return {
+                            "success": True,
+                            "page_id": doc.metadata["page_id"],
+                            "title": doc.metadata["title"],
+                            "space_key": doc.metadata["space_key"],
+                            "url": doc.metadata["url"],
+                            "version": doc.metadata["version"],
+                            "content": doc.page_content,
+                        }
+
+                    logger.error("Failed to create page - no document returned")
                     return {
-                        "success": True,
-                        "page_id": doc.metadata["page_id"],
-                        "title": doc.metadata["title"],
-                        "space_key": doc.metadata["space_key"],
-                        "url": doc.metadata["url"],
-                        "version": doc.metadata["version"],
-                        "content": doc.page_content,
+                        "success": False,
+                        "error": "Failed to create page - no document returned",
                     }
+                else:
+                    # For content templates
+                    template_content = self.confluence.get_content_template(template_id)
+                    if not template_content:
+                        logger.error("Failed to get content template")
+                        return {
+                            "success": False,
+                            "error": "Failed to get content template",
+                        }
 
-                logger.error("Failed to create page - no document returned")
-                return {
-                    "success": False,
-                    "error": "Failed to create page - no document returned",
-                }
+                    page = self.confluence.create_page(
+                        space=space_key,
+                        title=title,
+                        body=template_content.get("body", {})
+                        .get("storage", {})
+                        .get("value", ""),
+                        representation="storage",
+                    )
+
+                    if (
+                        not page
+                        or not isinstance(page, Document)
+                        or "page_id" not in page.metadata
+                    ):
+                        logger.error("Failed to create page from content template")
+                        return {
+                            "success": False,
+                            "error": "Failed to create page from content template",
+                        }
+
+                    # Get the created page content
+                    doc = self.confluence.get_page_content(page.metadata["page_id"])
+                    if doc:
+                        logger.debug(f"Successfully created page: {doc.metadata}")
+                        return {
+                            "success": True,
+                            "page_id": doc.metadata["page_id"],
+                            "title": doc.metadata["title"],
+                            "space_key": doc.metadata["space_key"],
+                            "url": doc.metadata["url"],
+                            "version": doc.metadata["version"],
+                            "content": doc.page_content,
+                        }
+
+                    logger.error("Failed to create page - no document returned")
+                    return {
+                        "success": False,
+                        "error": "Failed to create page - no document returned",
+                    }
 
             except Exception as e:
                 error_msg = f"Error creating page from template: {str(e)}"
@@ -1207,29 +1306,31 @@ class TemplateHandler:
             logger.debug("Full error details:", exc_info=True)
             return {"success": False, "error": error_msg}
 
-    def create_or_update_template(
-        self,
-        name: str,
-        body: Dict[str, str],
-        template_type: str = "page",
-        template_id: Optional[str] = None,
-        description: Optional[str] = None,
-        labels: Optional[List[Dict[str, str]]] = None,
-        space: Optional[str] = None,
+    @staticmethod
+    def apply_jira_template(
+        jira,
+        template_id: str,
+        project_key: str,
+        summary: str,
+        template_parameters: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Create or update a content template."""
-        self._ensure_confluence(space or "")
-        return self.confluence.confluence.create_or_update_template(
-            name=name,
-            body=body,
-            template_type=template_type,
-            template_id=template_id,
-            description=description,
-            labels=labels,
-            space=space,
-        )
+        """Apply a Jira template to create issue fields."""
+        try:
+            # Get the template
+            template = jira.issue_templates(project_key, template_id)
+            if not template:
+                return {}
 
-    def remove_template(self, template_id: str) -> None:
-        """Remove a template."""
-        self._ensure_confluence("")
-        self.confluence.confluence.remove_template(template_id)
+            # Extract fields from template
+            fields = template.get("fields", {})
+
+            # Apply template parameters if provided
+            if template_parameters:
+                for key, value in template_parameters.items():
+                    if key in fields:
+                        fields[key] = value
+
+            return fields
+        except Exception as e:
+            logger.error(f"Error applying Jira template: {str(e)}")
+            return {}

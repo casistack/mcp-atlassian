@@ -344,8 +344,8 @@ async def test_create_from_confluence_template():
         template = templates[0]
         template_id = template["id"]
 
-        # Test Case 1: Basic template usage
-        print("\n2. Testing basic template usage...")
+        # Test Case 1: Basic template usage with parameters
+        print("\n2. Testing basic template usage with parameters...")
         try:
             result = await call_tool(
                 "create_from_confluence_template",
@@ -356,6 +356,8 @@ async def test_create_from_confluence_template():
                     "template_parameters": {
                         "summary": "Test summary",
                         "description": "Test description",
+                        "owner": "Test Owner",
+                        "status": "In Progress",
                     },
                 },
             )
@@ -376,25 +378,23 @@ async def test_create_from_confluence_template():
 
         except Exception as e:
             print(f"Error in basic template usage: {str(e)}")
+            import traceback
 
-        # Test Case 2: Template with invalid parameters
-        print("\n3. Testing template with invalid parameters...")
+            print(traceback.format_exc())
+
+        # Test Case 2: Template without parameters
+        print("\n3. Testing template without parameters...")
         try:
             result = await call_tool(
                 "create_from_confluence_template",
                 {
                     "template_id": template_id,
                     "space_key": "IS",
-                    "title": "Test Template Page - Invalid Params",
-                    "template_parameters": {
-                        "nonexistent_param": "This parameter doesn't exist"
-                    },
+                    "title": "Test Template Page - No Params",
                 },
             )
             formatted_result = format_tool_result(result)
-            print(
-                f"Invalid parameters result: {json.dumps(formatted_result, indent=2)}"
-            )
+            print(f"No parameters result: {json.dumps(formatted_result, indent=2)}")
 
             # Clean up if page was created
             if formatted_result and formatted_result.get("success"):
@@ -407,7 +407,10 @@ async def test_create_from_confluence_template():
                     print("Cleanup complete")
 
         except Exception as e:
-            print(f"Error in invalid parameters test: {str(e)}")
+            print(f"Error in no parameters test: {str(e)}")
+            import traceback
+
+            print(traceback.format_exc())
 
         # Test Case 3: Invalid template ID
         print("\n4. Testing with invalid template ID...")
@@ -427,6 +430,9 @@ async def test_create_from_confluence_template():
 
         except Exception as e:
             print(f"Error in invalid template ID test: {str(e)}")
+            import traceback
+
+            print(traceback.format_exc())
 
     except Exception as e:
         print(f"Error getting templates: {str(e)}")
@@ -499,5 +505,5 @@ if __name__ == "__main__":
     # asyncio.run(test_unified_search())
     # asyncio.run(test_get_confluence_templates())
     # asyncio.run(test_get_jira_templates())
-    # asyncio.run(test_create_from_confluence_template())
-    asyncio.run(test_confluence_update_page())
+    asyncio.run(test_create_from_confluence_template())
+    # asyncio.run(test_confluence_update_page())

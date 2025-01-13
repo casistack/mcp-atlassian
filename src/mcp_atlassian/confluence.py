@@ -295,14 +295,14 @@ class ConfluenceFetcher:
                     try:
                         # Use create_page_from_template for content templates
                         page = self.confluence.create_page_from_template(
-                            space=space_key,
+                            space_key=space_key,
                             title=title,
                             template_id=template_id,
                             parent_id=parent_id,
                             **template_parameters or {},
                         )
 
-                        if page and page.get("id"):
+                        if page and isinstance(page, dict) and page.get("id"):
                             created_page = self.get_page_content(page["id"])
                             self.logger.debug(
                                 f"Created page metadata: {created_page.metadata}"
@@ -1063,3 +1063,19 @@ class ConfluenceFetcher:
             self.logger.error(f"Error searching pages: {str(e)}")
             self.logger.debug("Full error details:", exc_info=True)
             return []
+
+    def get_content_template(self, template_id: str) -> Optional[Dict[str, Any]]:
+        """Get a content template by its ID.
+
+        Args:
+            template_id: The ID of the template to retrieve
+
+        Returns:
+            Template content if successful, None otherwise
+        """
+        try:
+            return self.confluence.get_content_template(template_id)
+        except Exception as e:
+            self.logger.error(f"Error getting content template: {str(e)}")
+            self.logger.debug("Exception details:", exc_info=True)
+            return None

@@ -372,7 +372,7 @@ async def test_create_from_confluence_template():
                 if page_id:
                     print(f"\nCleaning up test page {page_id}...")
                     cleanup_result = await call_tool(
-                        "delete_confluence_page", {"page_id": page_id}
+                        "confluence_delete_page", {"page_id": page_id}
                     )
                     print("Cleanup complete")
 
@@ -402,7 +402,7 @@ async def test_create_from_confluence_template():
                 if page_id:
                     print(f"\nCleaning up test page {page_id}...")
                     cleanup_result = await call_tool(
-                        "delete_confluence_page", {"page_id": page_id}
+                        "confluence_delete_page", {"page_id": page_id}
                     )
                     print("Cleanup complete")
 

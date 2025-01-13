@@ -532,7 +532,7 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
-            name="delete_confluence_page",
+            name="confluence_delete_page",
             description="Delete a Confluence page.",
             category=TOOL_CATEGORIES["confluence"],
             inputSchema={

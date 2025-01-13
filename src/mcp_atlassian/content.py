@@ -310,6 +310,7 @@ class ContentEditor:
 
     def __init__(self):
         self.confluence = None
+        self.template_handler = TemplateHandler()
 
     def _ensure_confluence(self, space_key: str):
         """Ensure we have a Confluence connection."""
@@ -317,6 +318,7 @@ class ContentEditor:
             from .confluence import ConfluenceFetcher
 
             self.confluence = ConfluenceFetcher()
+            self.template_handler.confluence = self.confluence
 
     def _get_page(self, page_title: str, space_key: str) -> Dict[str, Any]:
         """Get a page by title and space key."""
@@ -1087,6 +1089,71 @@ class ContentEditor:
 
         return title
 
+    def create_from_template(
+        self,
+        space_key: str,
+        template_id: str,
+        title: str,
+        template_parameters: Optional[Dict[str, Any]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Create a page from a template with improved validation and processing."""
+        self._ensure_confluence(space_key)
+
+        try:
+            # Get template details with structure analysis
+            template_details = self.get_template_details(template_id, space_key)
+            if not template_details:
+                return {"success": False, "error": "Failed to get template details"}
+
+            # Validate parameters against template structure
+            is_valid, error_msg = self.validate_template_parameters(
+                template_details["variables"], template_parameters
+            )
+            if not is_valid:
+                return {"success": False, "error": error_msg}
+
+            # Process template content with validated parameters
+            processed_content = self._process_template_content(
+                template_details["content"], template_parameters
+            )
+
+            try:
+                # Create the page with processed content
+                response = self.confluence.confluence.create_page(
+                    space=space_key,
+                    title=title,
+                    body=processed_content,
+                    representation="storage",
+                )
+
+                if not response:
+                    logger.error("Failed to create page - no response from API")
+                    return {
+                        "success": False,
+                        "error": "Failed to create page - no response from API",
+                    }
+
+                # Return success response with page details
+                return {
+                    "success": True,
+                    "page_id": response.get("id"),
+                    "title": response.get("title"),
+                    "space_key": space_key,
+                    "url": f"{self.confluence.confluence.url}/spaces/{space_key}/pages/{response.get('id')}",
+                    "version": response.get("version", {}).get("number"),
+                    "content": processed_content,
+                }
+
+            except Exception as e:
+                error_msg = f"Error creating page: {str(e)}"
+                logger.error(error_msg)
+                return {"success": False, "error": error_msg}
+
+        except Exception as e:
+            error_msg = f"Error in template processing: {str(e)}"
+            logger.error(error_msg)
+            return {"success": False, "error": error_msg}
+
 
 class TemplateHandler:
     """Handles Confluence templates and blueprints."""
@@ -1101,6 +1168,90 @@ class TemplateHandler:
             from .confluence import ConfluenceFetcher
 
             self.confluence = ConfluenceFetcher()
+
+    def analyze_template_structure(self, template_content: str) -> Dict[str, str]:
+        """Analyze template content to identify available variables."""
+        if not template_content:
+            return {}
+
+        import re
+
+        variable_patterns = [
+            (r"\${([^}]+)}", "dollar_brace"),  # ${variable}
+            (r"@([^@]+)@", "at_symbol"),  # @variable@
+            (r"\{([^}]+)\}", "brace"),  # {variable}
+        ]
+
+        variables = {}
+        for pattern, format_type in variable_patterns:
+            matches = re.findall(pattern, template_content)
+            for match in matches:
+                variables[match] = format_type
+
+        return variables
+
+    def get_template_details(
+        self, template_id: str, space_key: str
+    ) -> Optional[Dict[str, Any]]:
+        """Get detailed template information including its structure."""
+        try:
+            # Get the template content
+            template_content = self.confluence.get_content_template(template_id)
+            if not template_content:
+                logger.error(f"Template {template_id} not found")
+                return None
+
+            content = (
+                template_content.get("body", {}).get("storage", {}).get("value", "")
+            )
+            if not content:
+                logger.error("Template content is empty")
+                return None
+
+            # Analyze template structure
+            variables = self.analyze_template_structure(content)
+
+            return {
+                "template_id": template_id,
+                "content": content,
+                "variables": variables,
+                "type": template_content.get("type", "custom"),
+                "name": template_content.get("name", ""),
+                "space_key": space_key,
+            }
+        except Exception as e:
+            logger.error(f"Error getting template details: {str(e)}")
+            return None
+
+    def validate_template_parameters(
+        self,
+        template_variables: Dict[str, str],
+        provided_parameters: Optional[Dict[str, Any]],
+    ) -> Tuple[bool, str]:
+        """Validate that provided parameters match template requirements.
+        Now more flexible - will use default/empty values for missing parameters."""
+        if not provided_parameters:
+            # Always return True - we'll handle missing parameters with empty strings
+            return True, ""
+
+        # Log missing variables but don't treat them as errors
+        missing_vars = [
+            var for var in template_variables if var not in provided_parameters
+        ]
+        if missing_vars:
+            logger.info(
+                f"Note: The following template variables will be empty: {', '.join(missing_vars)}"
+            )
+
+        # Only validate the type of provided parameters
+        for key, value in provided_parameters.items():
+            if not isinstance(value, (str, int, float, bool, list, dict)):
+                return (
+                    False,
+                    f"Invalid type for parameter '{key}'. Must be a string, number, boolean, list, or dictionary.",
+                )
+
+        return True, ""
 
     def get_content_templates(
         self, space_key: Optional[str] = None
@@ -1120,29 +1271,52 @@ class TemplateHandler:
         self, content: str, template_parameters: Optional[Dict[str, Any]] = None
     ) -> str:
         """Process template content by replacing variables with provided values.
-
-        Args:
-            content: The template content
-            template_parameters: Dictionary of parameter values to replace in the template
-
-        Returns:
-            Processed content with variables replaced
-        """
+        Uses empty strings for missing variables to maintain template structure."""
         if not template_parameters:
-            return content
+            template_parameters = {}
 
-        processed_content = content
-        for key, value in template_parameters.items():
-            # Handle different variable formats that might be in the template
-            variable_formats = [
-                f"${key}",  # ${variable}
-                f"${{key}}",  # ${variable}
-                f"@{key}@",  # @variable@
-                f"{{{key}}}",  # {variable}
-            ]
+        # Parse HTML content
+        soup = BeautifulSoup(content, "html.parser")
 
-            for var_format in variable_formats:
-                processed_content = processed_content.replace(var_format, str(value))
+        # Function to process text nodes
+        def process_text(text: str) -> str:
+            processed = text
+            # Handle provided parameters
+            for key, value in template_parameters.items():
+                patterns = [
+                    f"${{{key}}}",  # ${variable}
+                    f"@{key}@",  # @variable@
+                    f"{{{key}}}",  # {variable}
+                    key,  # Direct match for HTML content
+                ]
+                for pattern in patterns:
+                    processed = processed.replace(pattern, str(value))
+            return processed
+
+        # Process all text nodes in the HTML
+        for text in soup.find_all(text=True):
+            if text.parent.name not in [
+                "script",
+                "style",
+            ]:  # Skip script and style tags
+                new_text = process_text(text.string)
+                text.replace_with(new_text)
+
+        # Convert back to string
+        processed_content = str(soup)
+
+        # Handle any remaining template variables with empty strings
+        variables = self.analyze_template_structure(processed_content)
+        for var in variables:
+            if var not in template_parameters:
+                patterns = [
+                    f"${{{var}}}",  # ${variable}
+                    f"@{var}@",  # @variable@
+                    f"{{{var}}}",  # {variable}
+                    var,  # Direct match
+                ]
+                for pattern in patterns:
+                    processed_content = processed_content.replace(pattern, "")
 
         return processed_content
 
@@ -1153,157 +1327,62 @@ class TemplateHandler:
         title: str,
         template_parameters: Optional[Dict[str, Any]] = None,
     ) -> Optional[Dict[str, Any]]:
-        """Create a page from a template.
-
-        Args:
-            space_key: The key of the space where the page will be created
-            template_id: The ID of the template to use
-            title: The title for the new page
-            template_parameters: Optional parameters to fill in template variables
-
-        Returns:
-            Dictionary containing the created page information and error details if any
-        """
+        """Create a page from a template with improved validation and processing."""
         self._ensure_confluence(space_key)
 
         try:
-            # First try to get available templates to determine the type
-            templates = self.confluence.get_templates(space_key)
-            logger.debug(f"Available templates: {templates}")
+            # Get template details with structure analysis
+            template_details = self.get_template_details(template_id, space_key)
+            if not template_details:
+                return {"success": False, "error": "Failed to get template details"}
 
-            template_info = next((t for t in templates if t["id"] == template_id), None)
-            logger.debug(f"Selected template info: {template_info}")
-
-            if not template_info:
-                logger.error(f"Template {template_id} not found")
-                return {"success": False, "error": f"Template {template_id} not found"}
-
-            try:
-                # Check if a page with this title already exists
-                existing_page = self.confluence.get_page_by_title(space_key, title)
-                if existing_page:
-                    # Append timestamp to make title unique
-                    from datetime import datetime
-
-                    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-                    title = f"{title} {timestamp}"
-                    logger.debug(f"Title already exists, using new title: {title}")
-
-                if template_info["type"] == "blueprint":
-                    # For blueprint templates, we need to:
-                    # 1. Get the template content
-                    template_content = self.confluence.get_content_template(template_id)
-                    if not template_content:
-                        logger.error("Failed to get blueprint template content")
-                        return {
-                            "success": False,
-                            "error": "Failed to get blueprint template content",
-                        }
-
-                    # 2. Create the page with the template content
-                    page = self.confluence.create_page(
-                        space_key=space_key,
-                        title=title,
-                        body=template_content.get("body", {})
-                        .get("storage", {})
-                        .get("value", ""),
-                        representation="storage",
-                    )
-
-                    if (
-                        not page
-                        or not isinstance(page, Document)
-                        or "page_id" not in page.metadata
-                    ):
-                        logger.error("Failed to create page from blueprint template")
-                        return {
-                            "success": False,
-                            "error": "Failed to create page from blueprint template",
-                        }
-
-                    # Get the created page content
-                    doc = self.confluence.get_page_content(page.metadata["page_id"])
-                    if doc:
-                        logger.debug(f"Successfully created page: {doc.metadata}")
-                        return {
-                            "success": True,
-                            "page_id": doc.metadata["page_id"],
-                            "title": doc.metadata["title"],
-                            "space_key": doc.metadata["space_key"],
-                            "url": doc.metadata["url"],
-                            "version": doc.metadata["version"],
-                            "content": doc.page_content,
-                        }
-
-                    logger.error("Failed to create page - no document returned")
-                    return {
-                        "success": False,
-                        "error": "Failed to create page - no document returned",
-                    }
-                else:
-                    # For content templates
-                    template_content = self.confluence.get_content_template(template_id)
-                    if not template_content:
-                        logger.error("Failed to get content template")
-                        return {
-                            "success": False,
-                            "error": "Failed to get content template",
-                        }
-
-                    page = self.confluence.create_page(
-                        space=space_key,
-                        title=title,
-                        body=template_content.get("body", {})
-                        .get("storage", {})
-                        .get("value", ""),
-                        representation="storage",
-                    )
-
-                    if (
-                        not page
-                        or not isinstance(page, Document)
-                        or "page_id" not in page.metadata
-                    ):
-                        logger.error("Failed to create page from content template")
-                        return {
-                            "success": False,
-                            "error": "Failed to create page from content template",
-                        }
-
-                    # Get the created page content
-                    doc = self.confluence.get_page_content(page.metadata["page_id"])
-                    if doc:
-                        logger.debug(f"Successfully created page: {doc.metadata}")
-                        return {
-                            "success": True,
-                            "page_id": doc.metadata["page_id"],
-                            "title": doc.metadata["title"],
-                            "space_key": doc.metadata["space_key"],
-                            "url": doc.metadata["url"],
-                            "version": doc.metadata["version"],
-                            "content": doc.page_content,
-                        }
-
-                    logger.error("Failed to create page - no document returned")
-                    return {
-                        "success": False,
-                        "error": "Failed to create page - no document returned",
-                    }
-
-            except Exception as e:
-                error_msg = f"Error creating page from template: {str(e)}"
-                logger.error(error_msg)
-                logger.debug("Exception details:", exc_info=True)
+            # Validate parameters against template structure
+            is_valid, error_msg = self.validate_template_parameters(
+                template_details["variables"], template_parameters
+            )
+            if not is_valid:
                 return {"success": False, "error": error_msg}
 
-        except ValueError as ve:
-            error_msg = str(ve)
-            logger.error(f"Value error creating page from template: {error_msg}")
-            return {"success": False, "error": error_msg}
+            # Process template content with validated parameters
+            processed_content = self._process_template_content(
+                template_details["content"], template_parameters
+            )
+
+            try:
+                # Create the page with processed content
+                response = self.confluence.confluence.create_page(
+                    space=space_key,
+                    title=title,
+                    body=processed_content,
+                    representation="storage",
+                )
+
+                if not response:
+                    logger.error("Failed to create page - no response from API")
+                    return {
+                        "success": False,
+                        "error": "Failed to create page - no response from API",
+                    }
+
+                # Return success response with page details
+                return {
+                    "success": True,
+                    "page_id": response.get("id"),
+                    "title": response.get("title"),
+                    "space_key": space_key,
+                    "url": f"{self.confluence.confluence.url}/spaces/{space_key}/pages/{response.get('id')}",
+                    "version": response.get("version", {}).get("number"),
+                    "content": processed_content,
+                }
+
+            except Exception as e:
+                error_msg = f"Error creating page: {str(e)}"
+                logger.error(error_msg)
+                return {"success": False, "error": error_msg}
+
         except Exception as e:
-            error_msg = str(e)
-            logger.error(f"Error creating page from template: {error_msg}")
-            logger.debug("Full error details:", exc_info=True)
+            error_msg = f"Error in template processing: {str(e)}"
+            logger.error(error_msg)
             return {"success": False, "error": error_msg}
 
     @staticmethod

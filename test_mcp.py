@@ -454,6 +454,151 @@ async def test_create_from_confluence_template():
         print(traceback.format_exc())
 
 
+async def test_space_key_validation():
+    """Test space key validation and lookup functionality."""
+    print("\n=== Testing Space Key Validation ===")
+
+    # First get available spaces for validation
+    print("\nFetching available spaces...")
+    try:
+        config = Config.from_env()
+        confluence = ConfluenceFetcher()
+        spaces = confluence.get_spaces()
+        if not spaces or "results" not in spaces:
+            print("ERROR: Failed to fetch spaces")
+            return False
+
+        valid_space = spaces["results"][0] if spaces["results"] else None
+        if not valid_space:
+            print("ERROR: No spaces available for testing")
+            return False
+
+        valid_space_key = valid_space["key"]
+        valid_space_name = valid_space["name"]
+
+        # Generate a unique timestamp for this test run
+        timestamp = int(time.time())
+
+        # Test Case 1: Valid space key
+        print("\n1. Testing valid space key...")
+        try:
+            result = await call_tool(
+                "confluence_create_page",
+                {
+                    "space_key": valid_space_key,
+                    "title": f"Test Valid Space Key {timestamp}",
+                    "content": [
+                        {
+                            "type": "text",
+                            "content": "This is a test page for space key validation.",
+                        }
+                    ],
+                },
+            )
+            formatted_result = format_tool_result(result)
+            print(f"Valid space key result: {json.dumps(formatted_result, indent=2)}")
+
+            # Clean up if successful
+            if formatted_result and formatted_result.get("success"):
+                page_id = formatted_result.get("page_id")
+                if page_id:
+                    await call_tool("confluence_delete_page", {"page_id": page_id})
+
+        except Exception as e:
+            print(f"Error testing valid space key: {str(e)}")
+
+        # Test Case 2: Space name instead of key
+        print("\n2. Testing space name instead of key...")
+        try:
+            result = await call_tool(
+                "confluence_create_page",
+                {
+                    "space_key": valid_space_name,  # Using name instead of key
+                    "title": f"Test Space Name {timestamp}",
+                    "content": [
+                        {
+                            "type": "text",
+                            "content": "This is a test page using space name.",
+                        }
+                    ],
+                },
+            )
+            formatted_result = format_tool_result(result)
+            print(f"Space name result: {json.dumps(formatted_result, indent=2)}")
+
+            # Clean up if successful
+            if formatted_result and formatted_result.get("success"):
+                page_id = formatted_result.get("page_id")
+                if page_id:
+                    await call_tool("confluence_delete_page", {"page_id": page_id})
+
+        except Exception as e:
+            print(f"Error testing space name: {str(e)}")
+
+        # Test Case 3: Invalid space key
+        print("\n3. Testing invalid space key...")
+        try:
+            result = await call_tool(
+                "confluence_create_page",
+                {
+                    "space_key": "NONEXISTENT",
+                    "title": f"Test Invalid Space Key {timestamp}",
+                    "content": [
+                        {"type": "text", "content": "This page should not be created."}
+                    ],
+                },
+            )
+            formatted_result = format_tool_result(result)
+            print(f"Invalid space key result: {json.dumps(formatted_result, indent=2)}")
+
+            # Clean up if somehow successful
+            if formatted_result and formatted_result.get("success"):
+                page_id = formatted_result.get("page_id")
+                if page_id:
+                    await call_tool("confluence_delete_page", {"page_id": page_id})
+
+        except Exception as e:
+            print(f"Error testing invalid space key: {str(e)}")
+
+        # Test Case 4: Case-insensitive space key
+        print("\n4. Testing case-insensitive space key...")
+        try:
+            result = await call_tool(
+                "confluence_create_page",
+                {
+                    "space_key": valid_space_key.lower(),  # Using lowercase version
+                    "title": f"Test Case Insensitive {timestamp}",
+                    "content": [
+                        {
+                            "type": "text",
+                            "content": "This is a test page using case-insensitive key.",
+                        }
+                    ],
+                },
+            )
+            formatted_result = format_tool_result(result)
+            print(f"Case-insensitive result: {json.dumps(formatted_result, indent=2)}")
+
+            # Clean up if successful
+            if formatted_result and formatted_result.get("success"):
+                page_id = formatted_result.get("page_id")
+                if page_id:
+                    await call_tool("confluence_delete_page", {"page_id": page_id})
+
+        except Exception as e:
+            print(f"Error testing case-insensitive key: {str(e)}")
+
+    except Exception as e:
+        print(f"ERROR: Error during test execution: {str(e)}")
+        import traceback
+
+        print("\nFull error details:")
+        print(traceback.format_exc())
+        return False
+
+    return True
+
+
 async def test_confluence_update_page():
     """Test updating a Confluence page with rich formatting."""
     print("\n1. Testing update with rich formatting...")
@@ -517,5 +662,6 @@ if __name__ == "__main__":
     # asyncio.run(test_unified_search())
     # asyncio.run(test_get_confluence_templates())
     # asyncio.run(test_get_jira_templates())
-    asyncio.run(test_create_from_confluence_template())
+    # asyncio.run(test_create_from_confluence_template())
     # asyncio.run(test_confluence_update_page())
+    asyncio.run(test_space_key_validation())

@@ -714,21 +714,30 @@ class ContentEditor:
         Returns:
             Dict containing the created page information
         """
+        logger.info(f"Creating page in space: {space_key}")
         # Validate inputs
         if not space_key or not isinstance(space_key, str):
+            logger.error("Invalid space key")
             raise ValueError("Invalid space key")
 
         title = self.validate_page_title(title)
+        logger.info(f"Validated title: {title}")
 
         # Format content
         formatted_content = self.create_rich_content(editor.get_content())
+        logger.info(
+            f"Formatted content length: {len(formatted_content) if formatted_content else 0}"
+        )
         if not formatted_content:
+            logger.error("Page content cannot be empty")
             raise ValueError("Page content cannot be empty")
 
         self._ensure_confluence(space_key)
+        logger.info("Confluence connection ensured")
 
         try:
             # Create the page
+            logger.info("Attempting to create page")
             result = self.confluence.confluence.create_page(
                 space=space_key,
                 title=title,
@@ -737,6 +746,7 @@ class ContentEditor:
                 representation="storage",
                 editor="v2",
             )
+            logger.info(f"Create page API response: {result}")
 
             if not result:
                 logger.error("Failed to create page - no result returned")

@@ -285,9 +285,14 @@ def handle_confluence_tools(
         elif name == "confluence_create_page":
             try:
                 space_key = arguments["space_key"]
+                logger.info(f"Attempting to create page in space: {space_key}")
 
                 # Validate space key first
                 is_valid, correct_key = confluence_fetcher.validate_space_key(space_key)
+                logger.info(
+                    f"Space key validation result - is_valid: {is_valid}, correct_key: {correct_key}"
+                )
+
                 if not is_valid:
                     if correct_key:
                         logger.info(
@@ -295,6 +300,7 @@ def handle_confluence_tools(
                         )
                         space_key = correct_key
                     else:
+                        logger.warning(f"Invalid space key: {space_key}")
                         return [
                             TextContent(
                                 type="text",
@@ -308,99 +314,152 @@ def handle_confluence_tools(
                             )
                         ]
 
+                # Get content from arguments
                 content = arguments.get("content", [])
-                if not isinstance(content, list):
-                    raise ValueError("Content must be a list of content blocks")
+                logger.info(f"Content blocks to process: {len(content)}")
 
-                editor = content_editor.create_editor()
-
-                for block in content:
-                    if not isinstance(block, dict) or "type" not in block:
-                        continue
-
-                    block_type = block.get("type", "")
-                    content = block.get("content", "")
-                    props = block.get("properties", {})
-
-                    try:
-                        if block_type == "heading":
-                            editor.heading(content, props.get("level", 1))
-                        elif block_type == "text":
-                            if "style" in block:
-                                style = block["style"]
-                                if style.get("bold"):
-                                    content = editor.bold(content)
-                                if style.get("italic"):
-                                    content = editor.italic(content)
-                            editor.text(content)
-                        elif block_type == "list":
-                            items = block.get("items", [])
-                            if not isinstance(items, list):
-                                continue
-                            if block.get("style") == "numbered":
-                                editor.numbered_list(items)
-                            else:
-                                editor.bullet_list(items)
-                        elif block_type == "table":
-                            headers = block.get("headers", [])
-                            rows = block.get("rows", [])
-                            if isinstance(headers, list) and isinstance(rows, list):
-                                editor.table(headers, rows)
-                        elif block_type == "panel":
-                            editor.panel(
-                                content,
-                                props.get("type", "info"),
-                                props.get("title", ""),
-                            )
-                        elif block_type == "status":
-                            editor.status(content, props.get("color", "grey"))
-                        elif block_type == "code":
-                            editor.code(content, props.get("language", ""))
-                        elif block_type == "toc":
-                            editor.table_of_contents(
-                                props.get("min_level", 1), props.get("max_level", 7)
-                            )
-                    except Exception as e:
-                        logger.error(f"Error processing block type {block_type}: {e}")
-                        continue
-
-                # Create the page and get the result
-                result = content_editor.create_page(
-                    arguments["space_key"], arguments["title"], editor
-                )
-
-                if not result:
+                if not content:
+                    logger.warning("Content list is empty")
                     return [
                         TextContent(
                             type="text",
                             text=json.dumps(
                                 {
                                     "success": False,
-                                    "error": "Failed to create page - no result returned",
+                                    "error": "Content list cannot be empty",
                                 },
                                 indent=2,
                             ),
                         )
                     ]
 
-                return [
-                    TextContent(
-                        type="text",
-                        text=json.dumps(
-                            {
-                                "success": True,
-                                "message": f"Page '{arguments['title']}' created successfully",
-                                "page_id": result["page_id"],
-                                "title": result["title"],
-                                "space_key": result["space_key"],
-                                "url": result["url"],
-                                "version": result["version"],
-                            },
-                            indent=2,
-                        ),
+                if not isinstance(content, list):
+                    logger.error("Content is not a list")
+                    raise ValueError("Content must be a list of content blocks")
+
+                # Create the content in storage format
+                storage_content = []
+                for block in content:
+                    if not isinstance(block, dict) or "type" not in block:
+                        logger.warning(f"Skipping invalid block: {block}")
+                        continue
+
+                    block_type = block.get("type", "")
+                    block_content = block.get("content", "")
+                    logger.info(f"Processing block type: {block_type}")
+
+                    try:
+                        if block_type == "text":
+                            storage_content.append(f"<p>{block_content}</p>")
+                        elif block_type == "heading":
+                            level = block.get("properties", {}).get("level", 1)
+                            storage_content.append(
+                                f"<h{level}>{block_content}</h{level}>"
+                            )
+                        elif block_type == "list":
+                            items = block.get("items", [])
+                            if not isinstance(items, list):
+                                continue
+                            list_type = (
+                                "ol" if block.get("style") == "numbered" else "ul"
+                            )
+                            items_html = "".join(f"<li>{item}</li>" for item in items)
+                            storage_content.append(
+                                f"<{list_type}>{items_html}</{list_type}>"
+                            )
+                        elif block_type == "panel":
+                            props = block.get("properties", {})
+                            panel_type = props.get("type", "info")
+                            title = props.get("title", "")
+                            storage_content.append(
+                                f'<ac:structured-macro ac:name="panel">'
+                                f'<ac:parameter ac:name="title">{title}</ac:parameter>'
+                                f'<ac:parameter ac:name="type">{panel_type}</ac:parameter>'
+                                f"<ac:rich-text-body><p>{block_content}</p></ac:rich-text-body>"
+                                f"</ac:structured-macro>"
+                            )
+                        elif block_type == "code":
+                            props = block.get("properties", {})
+                            language = props.get("language", "")
+                            storage_content.append(
+                                f'<ac:structured-macro ac:name="code">'
+                                f'<ac:parameter ac:name="language">{language}</ac:parameter>'
+                                f"<ac:plain-text-body><![CDATA[{block_content}]]></ac:plain-text-body>"
+                                f"</ac:structured-macro>"
+                            )
+                        logger.info(f"Successfully processed block type: {block_type}")
+                    except Exception as e:
+                        logger.error(f"Error processing block type {block_type}: {e}")
+                        continue
+
+                # Join all content blocks
+                final_content = "\n".join(storage_content)
+                logger.info(f"Final content length: {len(final_content)}")
+
+                # Create the page directly using the Confluence API
+                try:
+                    result = confluence_fetcher.confluence.create_page(
+                        space=space_key,
+                        title=arguments["title"],
+                        body=final_content,
+                        representation="storage",
                     )
-                ]
+                    logger.info(f"Page creation result: {result}")
+
+                    if not result:
+                        logger.error(
+                            "Failed to create page - no result returned from API"
+                        )
+                        return [
+                            TextContent(
+                                type="text",
+                                text=json.dumps(
+                                    {
+                                        "success": False,
+                                        "error": "Failed to create page - no result returned from API",
+                                    },
+                                    indent=2,
+                                ),
+                            )
+                        ]
+
+                    return [
+                        TextContent(
+                            type="text",
+                            text=json.dumps(
+                                {
+                                    "success": True,
+                                    "message": f"Page '{arguments['title']}' created successfully",
+                                    "page_id": result["id"],
+                                    "title": result["title"],
+                                    "space_key": space_key,
+                                    "url": f"{confluence_fetcher.config.url}/wiki/spaces/{space_key}/pages/{result['id']}",
+                                    "version": result.get("version", {}).get(
+                                        "number", 1
+                                    ),
+                                },
+                                indent=2,
+                            ),
+                        )
+                    ]
+
+                except Exception as e:
+                    logger.error(f"Error creating page via API: {str(e)}")
+                    return [
+                        TextContent(
+                            type="text",
+                            text=json.dumps(
+                                {
+                                    "success": False,
+                                    "error": f"Failed to create page: {str(e)}",
+                                },
+                                indent=2,
+                            ),
+                        )
+                    ]
+
             except Exception as e:
+                logger.error(f"Error in confluence_create_page: {str(e)}")
                 return [
                     TextContent(
                         type="text",

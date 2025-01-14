@@ -106,20 +106,38 @@ class ConfluenceFetcher:
             - correct_key: The correct key if found, None otherwise
         """
         try:
+            self.logger.info(f"Validating space key: {space_key}")
+
             # If it's already a valid key, verify it exists
             spaces = self.get_spaces()
             if not spaces or "results" not in spaces:
                 self.logger.error("Failed to fetch spaces")
                 return False, None
 
-            # Check if the key exists directly
+            self.logger.debug(f"Found {len(spaces['results'])} spaces")
+
+            # First check exact match
             for space in spaces["results"]:
-                if space.get("key") == space_key:
+                current_key = space.get("key")
+                self.logger.debug(f"Checking against space: {current_key}")
+                if current_key == space_key:
+                    self.logger.info(f"Found exact match for key: {space_key}")
                     return True, space_key
 
-            # If not found, try to find it by name
+            # Then check case-insensitive key match
+            for space in spaces["results"]:
+                current_key = space.get("key", "")
+                if current_key.lower() == space_key.lower():
+                    self.logger.info(
+                        f"Found case-insensitive match. Original: {space_key}, Correct: {current_key}"
+                    )
+                    return False, current_key  # Return the correctly cased key
+
+            # If not found as a key, try to find it by name
+            self.logger.info("No key match found, trying to find by name")
             correct_key = self.get_space_key_by_name(space_key)
             if correct_key:
+                self.logger.info(f"Found matching space by name. Key: {correct_key}")
                 return False, correct_key
 
             self.logger.warning(

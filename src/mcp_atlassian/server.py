@@ -13,7 +13,12 @@ from .confluence import ConfluenceFetcher
 from .jira import JiraFetcher
 from .search import UnifiedSearch
 from .content import TemplateHandler, ContentEditor, RichTextEditor
-from .tool_handlers import handle_confluence_tools, handle_jira_tools
+from .tool_handlers import (
+    handle_confluence_tools,
+    handle_jira_tools,
+    get_draw_io_tools,
+    handle_draw_io_tools,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.disable())
@@ -1037,6 +1042,10 @@ Common Mistakes:
             },
         ),
     ]
+
+    # Add draw.io tools
+    tools.extend(get_draw_io_tools())
+
     logger.debug(f"Returning {len(tools)} tools: {[tool.name for tool in tools]}")
     return tools
 

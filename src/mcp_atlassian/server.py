@@ -913,7 +913,40 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="confluence_update_page",
-            description="Update an existing Confluence page with rich formatting.",
+            description="""Update an existing Confluence page with rich formatting.
+            
+Content blocks must follow specific structures:
+
+Table blocks:
+- MUST have 'headers' and 'rows' as direct properties of the block (NOT inside properties)
+- INCORRECT: { "type": "table", "properties": { "table": { "headers": [...], "rows": [...] } } }
+- CORRECT:   { "type": "table", "headers": [...], "rows": [...] }
+
+List blocks:
+- Must include 'items' array and 'style' ('bullet' or 'numbered')
+- Items can be strings or objects with nested lists
+
+Code blocks:
+- Must include 'language' in properties
+- Common languages: python, java, javascript, html, http, sql
+
+Panel blocks:
+- Must include 'type' in properties
+- Types: info, note, warning, success, error
+
+Status blocks:
+- Must include 'color' in properties
+- Colors: grey, red, yellow, green, blue
+
+TOC blocks:
+- Can include 'min_level' and 'max_level' in properties
+- Default levels: min=1, max=7
+
+Common Mistakes:
+1. Nesting table headers/rows inside properties object
+2. Using incorrect property names (e.g., maxLevel instead of max_level)
+3. Missing required fields for specific block types
+4. Using incorrect enum values for properties""",
             category=TOOL_CATEGORIES["confluence"],
             inputSchema={
                 "type": "object",
@@ -922,10 +955,7 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "ID of the page to update",
                     },
-                    "title": {
-                        "type": "string",
-                        "description": "Title of the page",
-                    },
+                    "title": {"type": "string", "description": "Title of the page"},
                     "content": {
                         "type": "array",
                         "description": "Content blocks in rich text format",
@@ -934,7 +964,7 @@ async def list_tools() -> list[Tool]:
                             "properties": {
                                 "type": {
                                     "type": "string",
-                                    "description": "Type of block: heading, text, list, table, panel, status, code, toc",
+                                    "description": "Type of content block",
                                     "enum": [
                                         "heading",
                                         "text",
@@ -948,21 +978,59 @@ async def list_tools() -> list[Tool]:
                                 },
                                 "content": {
                                     "type": "string",
-                                    "description": "Content of the block",
+                                    "description": "Content of the block (not required for toc blocks)",
+                                },
+                                "headers": {
+                                    "type": "array",
+                                    "description": "Required for table blocks - array of column headers",
+                                },
+                                "rows": {
+                                    "type": "array",
+                                    "description": "Required for table blocks - array of row arrays",
+                                },
+                                "items": {
+                                    "type": "array",
+                                    "description": "Required for list blocks - array of list items",
+                                },
+                                "style": {
+                                    "type": "string",
+                                    "description": "Required for list blocks - bullet or numbered",
                                 },
                                 "properties": {
                                     "type": "object",
-                                    "description": "Block properties like level for headings, language for code, etc.",
+                                    "description": "Block properties (NOT for table headers/rows)",
+                                    "examples": [
+                                        {
+                                            "heading": {"level": 1},
+                                            "code": {"language": "python"},
+                                            "panel": {
+                                                "type": "info",
+                                                "title": "Optional Title",
+                                            },
+                                            "status": {"color": "green"},
+                                            "toc": {"min_level": 1, "max_level": 7},
+                                        }
+                                    ],
                                 },
                             },
-                            "required": ["type", "content"],
+                            "required": ["type"],
+                            "allOf": [
+                                {
+                                    "if": {"properties": {"type": {"const": "table"}}},
+                                    "then": {"required": ["headers", "rows"]},
+                                },
+                                {
+                                    "if": {"properties": {"type": {"const": "list"}}},
+                                    "then": {"required": ["items", "style"]},
+                                },
+                            ],
                         },
                     },
                 },
                 "required": ["page_id", "title", "content"],
             },
             metadata={
-                "icon": "✏️",
+                "icon": "✨",
                 "status": "stable",
                 "version": "1.0",
                 "author": "MCP Atlassian Team",

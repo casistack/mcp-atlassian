@@ -935,152 +935,129 @@ class ContentEditor:
         )
 
     def create_rich_content(self, content_blocks: List[Dict[str, Any]]) -> str:
-        """Convert content blocks to Confluence storage format."""
-        formatted_content = []
+        """Convert content blocks to Confluence storage format HTML.
 
-        # Input validation
-        if not isinstance(content_blocks, list):
-            logger.warning("Invalid content blocks format: not a list")
-            return ""
+        Args:
+            content_blocks: List of content block dictionaries
 
-        for block in content_blocks:
-            if not isinstance(block, dict) or "type" not in block:
-                logger.warning("Invalid content block format: missing type")
-                continue
+        Returns:
+            Formatted HTML string in Confluence storage format
+        """
+        try:
+            if not content_blocks:
+                logger.warning("No content blocks provided")
+                return ""
 
-            block_type = block.get("type", "")
-            content = block.get("content", "")
-            props = block.get("properties", {})
+            formatted_blocks = []
+            for block in content_blocks:
+                if not isinstance(block, dict):
+                    logger.warning(f"Invalid block format: {block}")
+                    continue
 
-            try:
-                if block_type == "status":
-                    # Validate color
-                    valid_colors = ["grey", "red", "yellow", "green", "blue"]
-                    color = props.get("color", "grey")
-                    if color not in valid_colors:
-                        logger.warning(
-                            f"Invalid status color: {color}, defaulting to grey"
+                block_type = block.get("type", "")
+                content = block.get("content", "")
+                props = block.get("properties", {})
+
+                try:
+                    if block_type == "text":
+                        formatted_blocks.append(f"<p>{content}</p>")
+                    elif block_type == "heading":
+                        level = props.get("level", 1)
+                        formatted_blocks.append(f"<h{level}>{content}</h{level}>")
+                    elif block_type == "list":
+                        items = block.get("items", [])
+                        if not isinstance(items, list):
+                            logger.warning(f"Invalid list items: {items}")
+                            continue
+
+                        tag = "ol" if block.get("style") == "numbered" else "ul"
+                        items_html = "\n".join(f"<li>{item}</li>" for item in items)
+                        formatted_blocks.append(f"<{tag}>\n{items_html}\n</{tag}>")
+                    elif block_type == "table":
+                        headers = block.get("headers", [])
+                        rows = block.get("rows", [])
+                        if not headers or not rows:
+                            logger.warning("Table missing headers or rows")
+                            continue
+
+                        table_html = ["<table><tbody>"]
+                        # Add headers
+                        header_html = "".join(
+                            f"<th>{header}</th>" for header in headers
                         )
-                        color = "grey"
-                    formatted_content.append(
-                        f'<ac:structured-macro ac:name="status">\n'
-                        f'<ac:parameter ac:name="colour">{color}</ac:parameter>\n'
-                        f'<ac:parameter ac:name="title">{content}</ac:parameter>\n'
-                        "</ac:structured-macro>\n"
-                    )
-                elif block_type == "heading":
-                    # Validate heading level
-                    level = props.get("level", 1)
-                    if not isinstance(level, int) or level < 1 or level > 6:
-                        logger.warning(
-                            f"Invalid heading level: {level}, defaulting to 1"
-                        )
-                        level = 1
-                    formatted_content.append(f"<h{level}>{content}</h{level}>\n")
-                elif block_type == "text":
-                    # Handle text with advanced properties
-                    if "properties" in block:
-                        style_attrs = []
-                        if "color" in props:
-                            style_attrs.append(f"color: {props['color']}")
-                        if "background" in props:
-                            style_attrs.append(
-                                f"background-color: {props['background']}"
+                        table_html.append(f"<tr>{header_html}</tr>")
+                        # Add rows
+                        for row in rows:
+                            cells = "".join(f"<td>{cell}</td>" for cell in row)
+                            table_html.append(f"<tr>{cells}</tr>")
+                        table_html.append("</tbody></table>")
+                        formatted_blocks.append("\n".join(table_html))
+                    elif block_type == "panel":
+                        panel_type = props.get("type", "info")
+                        title = props.get("title", "")
+                        formatted_blocks.append(
+                            f'<ac:structured-macro ac:name="panel">'
+                            f'<ac:parameter ac:name="type">{panel_type}</ac:parameter>'
+                            + (
+                                f'<ac:parameter ac:name="title">{title}</ac:parameter>'
+                                if title
+                                else ""
                             )
-                        if "alignment" in props:
-                            valid_alignments = ["left", "center", "right", "justify"]
-                            alignment = props["alignment"]
-                            if alignment in valid_alignments:
-                                style_attrs.append(f"text-align: {alignment}")
-                        if "indent" in props:
-                            indent = props["indent"]
-                            if isinstance(indent, (int, float)) and indent >= 0:
-                                style_attrs.append(f"margin-left: {indent}em")
-
-                        style_attr = (
-                            f' style="{"; ".join(style_attrs)}"' if style_attrs else ""
+                            + f"<ac:rich-text-body><p>{content}</p></ac:rich-text-body>"
+                            + "</ac:structured-macro>"
                         )
-                        formatted_content.append(f"<p{style_attr}>{content}</p>\n")
+                    elif block_type == "status":
+                        color = props.get("color", "grey")
+                        formatted_blocks.append(
+                            f'<ac:structured-macro ac:name="status">'
+                            f'<ac:parameter ac:name="colour">{color}</ac:parameter>'
+                            f'<ac:parameter ac:name="title">{content}</ac:parameter>'
+                            + "</ac:structured-macro>"
+                        )
+                    elif block_type == "code":
+                        language = props.get("language", "")
+                        formatted_blocks.append(
+                            f'<ac:structured-macro ac:name="code">'
+                            f'<ac:parameter ac:name="language">{language}</ac:parameter>'
+                            + "<ac:plain-text-body><![CDATA["
+                            + content
+                            + "]]></ac:plain-text-body>"
+                            + "</ac:structured-macro>"
+                        )
+                    elif block_type == "toc":
+                        min_level = props.get("min_level", 1)
+                        max_level = props.get("max_level", 7)
+                        formatted_blocks.append(
+                            f'<ac:structured-macro ac:name="toc">'
+                            f'<ac:parameter ac:name="minLevel">{min_level}</ac:parameter>'
+                            f'<ac:parameter ac:name="maxLevel">{max_level}</ac:parameter>'
+                            + "</ac:structured-macro>"
+                        )
                     else:
-                        formatted_content.append(f"<p>{content}</p>\n")
-                elif block_type == "list":
-                    items = block.get("items", [])
-                    if not isinstance(items, list):
-                        logger.warning("Invalid list items format")
+                        logger.warning(f"Unknown block type: {block_type}")
                         continue
 
-                    # Filter out non-string items
-                    items = [str(item) for item in items if item is not None]
-
-                    if not items:
-                        continue
-
-                    list_type = "ol" if block.get("style") == "numbered" else "ul"
-                    formatted_content.append(f"<{list_type}>\n")
-                    for item in items:
-                        formatted_content.append(f"<li>{item}</li>\n")
-                    formatted_content.append(f"</{list_type}>\n")
-                elif block_type == "table":
-                    headers = block.get("headers", [])
-                    rows = block.get("rows", [])
-
-                    if not isinstance(headers, list) or not isinstance(rows, list):
-                        logger.warning("Invalid table format")
-                        continue
-
-                    # Validate and sanitize table data
-                    headers = [str(h) for h in headers if h is not None]
-                    sanitized_rows = []
-                    for row in rows:
-                        if isinstance(row, list):
-                            sanitized_rows.append(
-                                [str(cell) for cell in row if cell is not None]
-                            )
-
-                    if not headers or not sanitized_rows:
-                        continue
-
-                    formatted_content.append("<table><tbody>\n")
-                    if headers:
-                        formatted_content.append("<tr>\n")
-                        for header in headers:
-                            formatted_content.append(f"<th>{header}</th>\n")
-                        formatted_content.append("</tr>\n")
-
-                    for row in sanitized_rows:
-                        formatted_content.append("<tr>\n")
-                        for cell in row:
-                            formatted_content.append(f"<td>{cell}</td>\n")
-                        formatted_content.append("</tr>\n")
-                    formatted_content.append("</tbody></table>\n")
-                elif block_type == "code":
-                    language = props.get("language", "")
-                    formatted_content.append(
-                        f'<ac:structured-macro ac:name="code">\n'
-                        f'<ac:parameter ac:name="language">{language}</ac:parameter>\n'
-                        f"<ac:plain-text-body><![CDATA[{content}]]></ac:plain-text-body>\n"
-                        "</ac:structured-macro>\n"
+                except Exception as block_error:
+                    logger.error(
+                        f"Error formatting {block_type} block: {str(block_error)}"
                     )
-                elif (
-                    block_type == "note"
-                    or block_type == "info"
-                    or block_type == "warning"
-                ):
-                    macro_type = (
-                        "note"
-                        if block_type == "note"
-                        else ("info" if block_type == "info" else "warning")
-                    )
-                    formatted_content.append(
-                        f'<ac:structured-macro ac:name="{macro_type}">\n'
-                        f"<ac:rich-text-body><p>{content}</p></ac:rich-text-body>\n"
-                        "</ac:structured-macro>\n"
-                    )
+                    continue
+
+            # Join all blocks with newlines
+            formatted_content = "\n\n".join(formatted_blocks)
+
+            # Validate the HTML structure
+            try:
+                BeautifulSoup(formatted_content, "html.parser")
             except Exception as e:
-                logger.error(f"Error formatting block type {block_type}: {str(e)}")
-                continue
+                logger.error(f"Invalid HTML structure: {str(e)}")
+                raise ValueError(f"Generated invalid HTML: {str(e)}")
 
-        return "".join(formatted_content)
+            return formatted_content
+
+        except Exception as e:
+            logger.error(f"Error creating rich content: {str(e)}")
+            raise ValueError(f"Failed to create rich content: {str(e)}")
 
     def validate_page_title(self, title: str) -> str:
         """Validate and sanitize page title."""

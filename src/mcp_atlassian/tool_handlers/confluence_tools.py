@@ -4,6 +4,7 @@ from typing import Sequence
 from mcp.types import TextContent
 
 from mcp_atlassian.content import TemplateHandler
+from ..content_advanced import AdvancedFormatting
 
 logger = logging.getLogger("mcp-atlassian")
 
@@ -339,6 +340,8 @@ def handle_confluence_tools(
 
                 # Create the content in storage format
                 storage_content = []
+                advanced_formatting = AdvancedFormatting()
+
                 for block in content:
                     if not isinstance(block, dict) or "type" not in block:
                         logger.warning(f"Skipping invalid block: {block}")
@@ -349,6 +352,7 @@ def handle_confluence_tools(
                     logger.info(f"Processing block type: {block_type}")
 
                     try:
+                        # Handle basic blocks
                         if block_type == "text":
                             storage_content.append(f"<p>{block_content}</p>")
                         elif block_type == "heading":
@@ -367,25 +371,110 @@ def handle_confluence_tools(
                             storage_content.append(
                                 f"<{list_type}>{items_html}</{list_type}>"
                             )
+                        # Handle advanced blocks
+                        elif block_type == "layout":
+                            columns = block.get("content", [])
+                            layout_type = block.get("properties", {}).get("type")
+                            if layout_type == "two_equal" and len(columns) == 2:
+                                storage_content.append(
+                                    advanced_formatting.two_column_layout(
+                                        columns[0].get("content", ""),
+                                        columns[1].get("content", ""),
+                                    )
+                                )
+                            elif layout_type == "three_equal" and len(columns) == 3:
+                                storage_content.append(
+                                    advanced_formatting.three_column_layout(
+                                        [col.get("content", "") for col in columns]
+                                    )
+                                )
+                        elif block_type == "tabs":
+                            tabs = block.get("content", [])
+                            storage_content.append(
+                                advanced_formatting.tabbed_content(tabs)
+                            )
+                        elif block_type == "chart":
+                            storage_content.append(
+                                advanced_formatting.chart(
+                                    block.get("chart_type", "pie"),
+                                    block.get("data", {}),
+                                    block.get("title", ""),
+                                    block.get("width", 600),
+                                    block.get("height", 400),
+                                )
+                            )
+                        elif block_type == "roadmap":
+                            storage_content.append(
+                                advanced_formatting.roadmap(block.get("items", []))
+                            )
+                        elif block_type == "info_card":
+                            storage_content.append(
+                                advanced_formatting.info_card(
+                                    block.get("title", ""),
+                                    block.get("content", ""),
+                                    block.get("icon", "info"),
+                                    block.get("color", "#0052CC"),
+                                )
+                            )
+                        elif block_type == "table":
+                            headers = block.get("headers", [])
+                            rows = block.get("rows", [])
+                            styles = block.get("styles")
+                            if styles:
+                                storage_content.append(
+                                    advanced_formatting.table_with_styling(
+                                        headers, rows, styles
+                                    )
+                                )
+                            else:
+                                table_html = ["<table><tbody>"]
+                                header_html = "".join(
+                                    f"<th>{header}</th>" for header in headers
+                                )
+                                table_html.append(f"<tr>{header_html}</tr>")
+                                for row in rows:
+                                    cells = "".join(f"<td>{cell}</td>" for cell in row)
+                                    table_html.append(f"<tr>{cells}</tr>")
+                                table_html.append("</tbody></table>")
+                                storage_content.append("\n".join(table_html))
                         elif block_type == "panel":
                             props = block.get("properties", {})
                             panel_type = props.get("type", "info")
                             title = props.get("title", "")
                             storage_content.append(
                                 f'<ac:structured-macro ac:name="panel">'
-                                f'<ac:parameter ac:name="title">{title}</ac:parameter>'
                                 f'<ac:parameter ac:name="type">{panel_type}</ac:parameter>'
+                                f'<ac:parameter ac:name="title">{title}</ac:parameter>'
                                 f"<ac:rich-text-body><p>{block_content}</p></ac:rich-text-body>"
                                 f"</ac:structured-macro>"
                             )
+                        elif block_type == "status":
+                            color = block.get("properties", {}).get("color", "grey")
+                            storage_content.append(
+                                f'<ac:structured-macro ac:name="status">'
+                                f'<ac:parameter ac:name="colour">{color}</ac:parameter>'
+                                f'<ac:parameter ac:name="title">{block_content}</ac:parameter>'
+                                "</ac:structured-macro>"
+                            )
                         elif block_type == "code":
-                            props = block.get("properties", {})
-                            language = props.get("language", "")
+                            language = block.get("properties", {}).get("language", "")
                             storage_content.append(
                                 f'<ac:structured-macro ac:name="code">'
                                 f'<ac:parameter ac:name="language">{language}</ac:parameter>'
-                                f"<ac:plain-text-body><![CDATA[{block_content}]]></ac:plain-text-body>"
-                                f"</ac:structured-macro>"
+                                "<ac:plain-text-body><![CDATA["
+                                f"{block_content}"
+                                "]]></ac:plain-text-body>"
+                                "</ac:structured-macro>"
+                            )
+                        elif block_type == "toc":
+                            props = block.get("properties", {})
+                            min_level = props.get("min_level", 1)
+                            max_level = props.get("max_level", 7)
+                            storage_content.append(
+                                f'<ac:structured-macro ac:name="toc">'
+                                f'<ac:parameter ac:name="minLevel">{min_level}</ac:parameter>'
+                                f'<ac:parameter ac:name="maxLevel">{max_level}</ac:parameter>'
+                                "</ac:structured-macro>"
                             )
                         logger.info(f"Successfully processed block type: {block_type}")
                     except Exception as e:
@@ -396,7 +485,7 @@ def handle_confluence_tools(
                 final_content = "\n".join(storage_content)
                 logger.info(f"Final content length: {len(final_content)}")
 
-                # Create the page directly using the Confluence API
+                # Create the page
                 try:
                     result = confluence_fetcher.confluence.create_page(
                         space=space_key,
@@ -483,51 +572,86 @@ def handle_confluence_tools(
                 if not isinstance(content, list):
                     raise ValueError("Content must be a list of content blocks")
 
+                # Create a new editor instance
                 editor = content_editor.create_editor()
+
+                # Process each content block
                 for block in content:
                     if not isinstance(block, dict) or "type" not in block:
                         raise ValueError(
                             "Each content block must be a dictionary with a 'type' field"
                         )
-                    print(f"Processing block: {json.dumps(block, indent=2)}")
 
-                    if block["type"] == "heading":
-                        editor.heading(
-                            block["content"],
-                            block.get("properties", {}).get("level", 1),
-                        )
-                    elif block["type"] == "text":
-                        if "style" in block:
-                            if "bold" in block["style"]:
-                                editor.bold(block["content"])
-                            elif "italic" in block["style"]:
-                                editor.italic(block["content"])
+                    print(f"Processing block: {json.dumps(block, indent=2)}")
+                    block_type = block.get("type", "")
+
+                    try:
+                        if block_type == "heading":
+                            editor.heading(
+                                block["content"],
+                                block.get("properties", {}).get("level", 1),
+                            )
+                        elif block_type == "text":
+                            if "style" in block:
+                                if "bold" in block["style"]:
+                                    editor.bold(block["content"])
+                                elif "italic" in block["style"]:
+                                    editor.italic(block["content"])
+                            else:
+                                editor.text(block["content"])
+                        elif block_type == "list":
+                            items = block.get("items", [])
+                            if not isinstance(items, list):
+                                raise ValueError(
+                                    f"List items must be an array, got {type(items)}"
+                                )
+                            if block.get("style") == "numbered":
+                                editor.numbered_list(items)
+                            else:
+                                editor.bullet_list(items)
+                        elif block_type == "table":
+                            headers = block.get("headers")
+                            rows = block.get("rows")
+                            if not headers or not rows:
+                                raise ValueError(
+                                    "Table must have both headers and rows"
+                                )
+                            if not isinstance(headers, list) or not isinstance(
+                                rows, list
+                            ):
+                                raise ValueError(
+                                    "Table headers and rows must be arrays"
+                                )
+                            editor.table(headers, rows)
+                        elif block_type == "panel":
+                            props = block.get("properties", {})
+                            editor.panel(
+                                block["content"],
+                                props.get("type", "info"),
+                                props.get("title", ""),
+                            )
+                        elif block_type == "status":
+                            props = block.get("properties", {})
+                            editor.status(block["content"], props.get("color", "grey"))
+                        elif block_type == "code":
+                            props = block.get("properties", {})
+                            editor.code(block["content"], props.get("language", ""))
+                        elif block_type == "toc":
+                            props = block.get("properties", {})
+                            editor.table_of_contents(
+                                props.get("min_level", 1), props.get("max_level", 7)
+                            )
                         else:
-                            editor.text(block["content"])
-                    elif block["type"] == "list":
-                        if block.get("style") == "numbered":
-                            editor.numbered_list(block["items"])
-                        else:
-                            editor.bullet_list(block["items"])
-                    elif block["type"] == "table":
-                        editor.table(block["headers"], block["rows"])
-                    elif block["type"] == "panel":
-                        props = block.get("properties", {})
-                        editor.panel(
-                            block["content"],
-                            props.get("type", "info"),
-                            props.get("title", ""),
+                            print(f"Warning: Unknown block type {block_type}, skipping")
+                            continue
+
+                        print(f"Successfully processed {block_type} block")
+                    except Exception as block_error:
+                        print(
+                            f"Error processing {block_type} block: {str(block_error)}"
                         )
-                    elif block["type"] == "status":
-                        props = block.get("properties", {})
-                        editor.status(block["content"], props.get("color", "grey"))
-                    elif block["type"] == "code":
-                        props = block.get("properties", {})
-                        editor.code(block["content"], props.get("language", ""))
-                    elif block["type"] == "toc":
-                        props = block.get("properties", {})
-                        editor.table_of_contents(
-                            props.get("min_level", 1), props.get("max_level", 7)
+                        raise ValueError(
+                            f"Failed to process {block_type} block: {str(block_error)}"
                         )
 
                 # Convert the content to HTML format
@@ -537,7 +661,7 @@ def handle_confluence_tools(
                 print(f"\nFormatted content: {formatted_content}")
 
                 if not formatted_content:
-                    raise ValueError("Failed to format content")
+                    raise ValueError("Failed to format content - no content generated")
 
                 # Update the page
                 print(
@@ -585,14 +709,15 @@ def handle_confluence_tools(
                     ]
 
             except Exception as e:
-                print(f"Error during update: {str(e)}")
+                error_msg = str(e)
+                print(f"Error during update: {error_msg}")
                 return [
                     TextContent(
                         type="text",
                         text=json.dumps(
                             {
                                 "success": False,
-                                "error": f"Failed to update page: {str(e)}",
+                                "error": f"Failed to update page: {error_msg}",
                             },
                             indent=2,
                         ),

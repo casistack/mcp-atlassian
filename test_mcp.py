@@ -240,220 +240,6 @@ async def test_unified_search():
         print(traceback.format_exc())
 
 
-async def test_get_confluence_templates():
-    """Test getting Confluence templates."""
-    print("\n=== Testing Get Confluence Templates ===")
-
-    # Test Case 1: Get all templates
-    print("\n1. Testing get all templates...")
-    result = await call_tool("get_confluence_templates", {})
-    formatted_result = format_tool_result(result)
-    print(
-        f"All templates: {json.dumps(formatted_result, indent=2) if formatted_result else 'No templates found'}"
-    )
-
-    # Test Case 2: Get space-specific templates
-    print("\n2. Testing space-specific templates...")
-    result = await call_tool("get_confluence_templates", {"space_key": "IS"})
-    formatted_result = format_tool_result(result)
-    print(
-        f"Space templates: {json.dumps(formatted_result, indent=2) if formatted_result else 'No templates found'}"
-    )
-
-    # Test Case 3: Test with non-existent space
-    print("\n3. Testing with non-existent space...")
-    result = await call_tool("get_confluence_templates", {"space_key": "NONEXISTENT"})
-    formatted_result = format_tool_result(result)
-    print(
-        f"Non-existent space templates: {json.dumps(formatted_result, indent=2) if formatted_result else 'No templates found'}"
-    )
-
-
-async def test_get_jira_templates():
-    """Test getting Jira templates."""
-    print("\n=== Testing Get Jira Templates ===")
-
-    try:
-        # Test Case 1: Get all templates
-        print("\n1. Testing get all templates...")
-        try:
-            result = await call_tool("get_jira_templates", {})
-            formatted_result = format_tool_result(result)
-            print(
-                f"All templates: {json.dumps(formatted_result, indent=2) if formatted_result else 'No templates found'}"
-            )
-        except Exception as e:
-            print(f"Error getting all templates: {str(e)}")
-            import traceback
-
-            print(traceback.format_exc())
-
-        # Test Case 2: Get project-specific templates
-        print("\n2. Testing project-specific templates...")
-        try:
-            result = await call_tool("get_jira_templates", {"project_key": "KAN"})
-            formatted_result = format_tool_result(result)
-            print(
-                f"Project templates: {json.dumps(formatted_result, indent=2) if formatted_result else 'No templates found'}"
-            )
-        except Exception as e:
-            print(f"Error getting project templates: {str(e)}")
-            import traceback
-
-            print(traceback.format_exc())
-
-        # Test Case 3: Test with non-existent project
-        print("\n3. Testing with non-existent project...")
-        try:
-            result = await call_tool(
-                "get_jira_templates", {"project_key": "NONEXISTENT"}
-            )
-            formatted_result = format_tool_result(result)
-            print(
-                f"Non-existent project templates: {json.dumps(formatted_result, indent=2) if formatted_result else 'No templates found'}"
-            )
-        except Exception as e:
-            print(f"Error getting templates for non-existent project: {str(e)}")
-            import traceback
-
-            print(traceback.format_exc())
-
-    except Exception as e:
-        print(f"ERROR: Error during test execution: {str(e)}")
-        import traceback
-
-        print("\nFull error details:")
-        print(traceback.format_exc())
-
-
-async def test_create_from_confluence_template():
-    """Test creating a page from a Confluence template."""
-    print("\n=== Testing Create From Confluence Template ===")
-
-    # First, get available templates to use for testing
-    print("\n1. Getting available templates...")
-    try:
-        result = await call_tool("get_confluence_templates", {"space_key": "IS"})
-        templates = format_tool_result(result)
-        print(f"Available templates: {json.dumps(templates, indent=2)}")
-
-        if not templates:
-            print("No templates found for testing")
-            return
-
-        # Find the Product Requirements template
-        product_req_template = next(
-            (t for t in templates if t["name"].lower() == "product requirements"),
-            templates[0],  # Fallback to first template if not found
-        )
-        template_id = product_req_template["id"]
-
-        # Generate unique timestamp for test titles
-        timestamp = int(time.time())
-
-        # Test Case 1: Complex template usage with flattened parameters
-        print("\n2. Testing complex template usage with flattened parameters...")
-        try:
-            result = await call_tool(
-                "create_from_confluence_template",
-                {
-                    "template_id": template_id,
-                    "space_key": "IS",
-                    "title": f"Test Product Requirements Document {timestamp}",
-                    "template_parameters": {
-                        "product_name": "Test Product",
-                        "product_owner": "Test Owner",
-                        "product_description": "A test product for automated testing",
-                        "requirement_1": "First test requirement (High Priority)",
-                        "requirement_2": "Second test requirement (Medium Priority)",
-                        "stakeholder_1": "Test Team (Development)",
-                        "stakeholder_2": "Test Manager (Product Owner)",
-                        "overview_section": "Test product overview section",
-                        "features_section": "Test product features section",
-                    },
-                },
-            )
-            formatted_result = format_tool_result(result)
-            print(
-                f"Create from template result: {json.dumps(formatted_result, indent=2)}"
-            )
-
-            # If page was created successfully, clean it up
-            if formatted_result and formatted_result.get("success"):
-                page_id = formatted_result.get("page_id")
-                if page_id:
-                    print(f"\nCleaning up test page {page_id}...")
-                    cleanup_result = await call_tool(
-                        "confluence_delete_page", {"page_id": page_id}
-                    )
-                    print("Cleanup complete")
-
-        except Exception as e:
-            print(f"Error in complex template usage: {str(e)}")
-            import traceback
-
-            print(traceback.format_exc())
-
-        # Test Case 2: Template without parameters
-        print("\n3. Testing template without parameters...")
-        try:
-            result = await call_tool(
-                "create_from_confluence_template",
-                {
-                    "template_id": template_id,
-                    "space_key": "IS",
-                    "title": f"Test Template Page - No Params {timestamp}",
-                },
-            )
-            formatted_result = format_tool_result(result)
-            print(f"No parameters result: {json.dumps(formatted_result, indent=2)}")
-
-            # Clean up if page was created
-            if formatted_result and formatted_result.get("success"):
-                page_id = formatted_result.get("page_id")
-                if page_id:
-                    print(f"\nCleaning up test page {page_id}...")
-                    cleanup_result = await call_tool(
-                        "confluence_delete_page", {"page_id": page_id}
-                    )
-                    print("Cleanup complete")
-
-        except Exception as e:
-            print(f"Error in no parameters test: {str(e)}")
-            import traceback
-
-            print(traceback.format_exc())
-
-        # Test Case 3: Invalid template ID
-        print("\n4. Testing with invalid template ID...")
-        try:
-            result = await call_tool(
-                "create_from_confluence_template",
-                {
-                    "template_id": "invalid_template_id",
-                    "space_key": "IS",
-                    "title": f"Test Template Page - Invalid Template {timestamp}",
-                },
-            )
-            formatted_result = format_tool_result(result)
-            print(
-                f"Invalid template ID result: {json.dumps(formatted_result, indent=2)}"
-            )
-
-        except Exception as e:
-            print(f"Error in invalid template ID test: {str(e)}")
-            import traceback
-
-            print(traceback.format_exc())
-
-    except Exception as e:
-        print(f"Error getting templates: {str(e)}")
-        import traceback
-
-        print("\nFull error details:")
-        print(traceback.format_exc())
-
-
 async def test_space_key_validation():
     """Test space key validation and lookup functionality."""
     print("\n=== Testing Space Key Validation ===")
@@ -658,10 +444,248 @@ async def test_confluence_update_page():
     return True
 
 
+async def test_rest_api_guide_update():
+    """Test updating a Confluence page with the REST API Development Guide content."""
+    print("\n=== Testing REST API Guide Update ===")
+    page_id = "13107341"  # The specific page ID that failed
+    print(f"\nAttempting to update page {page_id}...")
+
+    try:
+        config = Config.from_env()
+        confluence = ConfluenceFetcher()
+        content_editor = ContentEditor()
+
+        print("\nFetching current page state...")
+        current_page = confluence.confluence.get_page_by_id(
+            page_id=page_id, expand="body.storage,version,space"
+        )
+
+        if not current_page:
+            print(f"ERROR: Page {page_id} not found")
+            return
+
+        print(f"Current page version: {current_page.get('version', {}).get('number')}")
+        print(f"Current page title: {current_page.get('title')}")
+        print(f"Current space key: {current_page.get('space', {}).get('key')}")
+
+        # This is the exact content structure the AI tried to use
+        result = await call_tool(
+            "confluence_update_page",
+            {
+                "page_id": page_id,
+                "title": "REST API Development Guide",
+                "content": [
+                    {"type": "toc"},
+                    {
+                        "type": "heading",
+                        "content": "Executive Summary",
+                        "properties": {"level": 2},
+                    },
+                    {
+                        "type": "status",
+                        "content": "Current Version: 2.0",
+                        "properties": {"color": "blue"},
+                    },
+                    {
+                        "type": "text",
+                        "content": "This guide provides comprehensive documentation for developing and consuming REST APIs, covering best practices, technical details, implementation guidance, and troubleshooting.",
+                    },
+                    {
+                        "type": "heading",
+                        "content": "1. Overview",
+                        "properties": {"level": 2},
+                    },
+                    {
+                        "type": "text",
+                        "content": "REST (Representational State Transfer) is an architectural style for distributed systems. Key principles include:",
+                    },
+                    {
+                        "type": "list",
+                        "items": [
+                            "➤ Client-server architecture",
+                            "➤ Statelessness",
+                            "➤ Cacheability",
+                            "➤ Uniform interface",
+                            "➤ Layered system",
+                            "➤ Code on demand (optional)",
+                        ],
+                        "style": "bullet",
+                    },
+                    {
+                        "type": "heading",
+                        "content": "2. Technical Details",
+                        "properties": {"level": 2},
+                    },
+                    {
+                        "type": "heading",
+                        "content": "2.1 Authentication Methods",
+                        "properties": {"level": 3},
+                    },
+                    {
+                        "type": "table",
+                        "headers": ["Method", "Description", "Security Level"],
+                        "rows": [
+                            ["API Key", "Simple key-based authentication", "Medium"],
+                            ["OAuth 2.0", "Token-based authentication", "High"],
+                            ["Basic Auth", "Username/password in header", "Low"],
+                            ["JWT", "JSON Web Tokens", "High"],
+                        ],
+                    },
+                    {
+                        "type": "heading",
+                        "content": "2.2 Request/Response Formats",
+                        "properties": {"level": 3},
+                    },
+                    {
+                        "type": "code",
+                        "content": "GET /api/v1/users HTTP/1.1\nHost: api.example.com\nAccept: application/json\nAuthorization: Bearer {token}",
+                        "properties": {"language": "http"},
+                    },
+                    {
+                        "type": "code",
+                        "content": 'HTTP/1.1 200 OK\nContent-Type: application/json\n\n{\n  "data": [\n    {\n      "id": 1,\n      "name": "John Doe"\n    }\n  ]\n}',
+                        "properties": {"language": "http"},
+                    },
+                    {
+                        "type": "heading",
+                        "content": "2.3 Rate Limiting",
+                        "properties": {"level": 3},
+                    },
+                    {
+                        "type": "panel",
+                        "content": "API rate limits are enforced to ensure fair usage and system stability. Default limits are 1000 requests per hour per API key.",
+                        "properties": {"type": "warning", "title": "Important"},
+                    },
+                    {
+                        "type": "heading",
+                        "content": "3. Implementation Guide",
+                        "properties": {"level": 2},
+                    },
+                    {
+                        "type": "heading",
+                        "content": "3.1 Setup Steps",
+                        "properties": {"level": 3},
+                    },
+                    {
+                        "type": "list",
+                        "items": [
+                            "① Install required dependencies",
+                            "② Configure environment variables",
+                            "③ Initialize API client",
+                            "④ Set up authentication",
+                            "⑤ Implement error handling",
+                            "⑥ Add logging",
+                            "⑦ Configure rate limiting",
+                        ],
+                        "style": "numbered",
+                    },
+                    {
+                        "type": "heading",
+                        "content": "3.2 Best Practices",
+                        "properties": {"level": 3},
+                    },
+                    {
+                        "type": "list",
+                        "items": [
+                            "• Use HTTPS for all API endpoints",
+                            "• Implement proper error handling",
+                            "• Use versioning in API endpoints",
+                            "• Document all endpoints thoroughly",
+                            "• Implement rate limiting",
+                            "• Use appropriate HTTP status codes",
+                            "• Validate all input data",
+                        ],
+                        "style": "bullet",
+                    },
+                    {
+                        "type": "heading",
+                        "content": "3.3 Common Patterns",
+                        "properties": {"level": 3},
+                    },
+                    {
+                        "type": "code",
+                        "content": "// Example of pagination\nGET /api/v1/users?page=2&limit=50",
+                        "properties": {"language": "http"},
+                    },
+                    {
+                        "type": "code",
+                        "content": "// Example of filtering\nGET /api/v1/users?status=active&role=admin",
+                        "properties": {"language": "http"},
+                    },
+                    {
+                        "type": "heading",
+                        "content": "4. Troubleshooting",
+                        "properties": {"level": 2},
+                    },
+                    {
+                        "type": "heading",
+                        "content": "4.1 Common Issues",
+                        "properties": {"level": 3},
+                    },
+                    {
+                        "type": "heading",
+                        "content": "4.2 Error Codes",
+                        "properties": {"level": 3},
+                    },
+                    {
+                        "type": "table",
+                        "headers": ["Code", "Description"],
+                        "rows": [
+                            ["400", "Bad Request"],
+                            ["401", "Unauthorized"],
+                            ["403", "Forbidden"],
+                            ["404", "Not Found"],
+                            ["429", "Too Many Requests"],
+                            ["500", "Internal Server Error"],
+                        ],
+                    },
+                    {
+                        "type": "heading",
+                        "content": "5. Examples",
+                        "properties": {"level": 2},
+                    },
+                    {
+                        "type": "code",
+                        "content": '// Create User\nPOST /api/v1/users\nContent-Type: application/json\n\n{\n  "name": "Jane Doe",\n  "email": "jane@example.com"\n}',
+                        "properties": {"language": "http"},
+                    },
+                    {
+                        "type": "code",
+                        "content": '// Successful Response\nHTTP/1.1 201 Created\nContent-Type: application/json\n\n{\n  "id": 123,\n  "name": "Jane Doe",\n  "email": "jane@example.com"\n}',
+                        "properties": {"language": "http"},
+                    },
+                    {
+                        "type": "code",
+                        "content": '// Error Response\nHTTP/1.1 400 Bad Request\nContent-Type: application/json\n\n{\n  "error": {\n    "code": "invalid_email",\n    "message": "Invalid email format"\n  }\n}',
+                        "properties": {"language": "http"},
+                    },
+                ],
+            },
+        )
+        formatted_result = format_tool_result(result)
+        print(f"Update result: {json.dumps(formatted_result, indent=2)}")
+
+        if not formatted_result.get("success"):
+            print("\nDebug information:")
+            print(f"Page ID: {page_id}")
+            print(f"Current version: {current_page.get('version', {}).get('number')}")
+            print(f"Current title: {current_page.get('title')}")
+            print(f"Space key: {current_page.get('space', {}).get('key')}")
+            print(f"Error message: {formatted_result.get('error')}")
+
+    except Exception as e:
+        print(f"Error during test: {str(e)}")
+        import traceback
+
+        print("\nFull error details:")
+        print(traceback.format_exc())
+
+
 if __name__ == "__main__":
     # asyncio.run(test_unified_search())
     # asyncio.run(test_get_confluence_templates())
     # asyncio.run(test_get_jira_templates())
     # asyncio.run(test_create_from_confluence_template())
     # asyncio.run(test_confluence_update_page())
-    asyncio.run(test_space_key_validation())
+    # asyncio.run(test_space_key_validation())
+    asyncio.run(test_rest_api_guide_update())

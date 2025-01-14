@@ -44,7 +44,10 @@ def cleanup_test_pages():
                 'title ~ "Test Page" OR '
                 'title ~ "Formatting Test" OR '
                 'title ~ "test_" OR '
-                'title ~ "MCP*Test")'
+                'title ~ "MCP*Test" OR '
+                'title ~ "Test*" OR '
+                'title ~ "Test")',
+                limit=20,
             )
 
             if not test_pages:

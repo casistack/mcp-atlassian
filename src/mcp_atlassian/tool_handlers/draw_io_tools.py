@@ -3,6 +3,7 @@
 import logging
 from typing import Sequence
 from mcp.types import TextContent, Tool
+import json
 
 from ..draw_io_handler import (
     DiagramType,
@@ -10,6 +11,7 @@ from ..draw_io_handler import (
     ConnectorType,
     DiagramStyle,
     ElementStyle,
+    DiagramData,
 )
 
 logger = logging.getLogger("mcp-atlassian")
@@ -234,10 +236,9 @@ async def handle_draw_io_tools(
     """
     try:
         if name == "create_diagram":
-            result = await draw_io_handler.create_diagram(
-                page_id=arguments["page_id"],
-                diagram_name=arguments["diagram_name"],
-                diagram_type=arguments["diagram_type"],
+            # Create diagram data
+            diagram = DiagramData(
+                diagram_type=DiagramType(arguments["diagram_type"]),
                 content={
                     "elements": arguments["elements"],
                     "connections": arguments.get("connections", []),
@@ -249,17 +250,38 @@ async def handle_draw_io_tools(
                 ),
             )
 
+            # Create the diagram
+            result = await draw_io_handler.create_diagram(
+                page_id=arguments["page_id"],
+                diagram_name=arguments["diagram_name"],
+                diagram_data=diagram.to_base64(),
+            )
+
             if result.get("success"):
                 return [
                     TextContent(
-                        f"Successfully created diagram '{arguments['diagram_name']}' "
-                        f"with macro ID {result['macro_id']}"
+                        type="text",
+                        text=json.dumps(
+                            {
+                                "success": True,
+                                "message": "Successfully created diagram",
+                                "macro_id": result.get("macro_id"),
+                            },
+                            indent=2,
+                        ),
                     )
                 ]
             else:
                 return [
                     TextContent(
-                        f"Failed to create diagram: {result.get('error', 'Unknown error')}"
+                        type="text",
+                        text=json.dumps(
+                            {
+                                "success": False,
+                                "error": result.get("error", "Unknown error"),
+                            },
+                            indent=2,
+                        ),
                     )
                 ]
 
@@ -279,11 +301,12 @@ async def handle_draw_io_tools(
             )
 
             if result.get("success"):
-                return [TextContent("Successfully updated diagram")]
+                return [TextContent(type="text", text="Successfully updated diagram")]
             else:
                 return [
                     TextContent(
-                        f"Failed to update diagram: {result.get('error', 'Unknown error')}"
+                        type="text",
+                        text=f"Failed to update diagram: {result.get('error', 'Unknown error')}",
                     )
                 ]
 
@@ -296,18 +319,23 @@ async def handle_draw_io_tools(
             if result:
                 return [
                     TextContent(
-                        f"Retrieved diagram data:\n"
-                        f"Type: {result['diagram_type']}\n"
-                        f"Elements: {len(result['content'].get('elements', []))}\n"
-                        f"Connections: {len(result['content'].get('connections', []))}"
+                        type="text",
+                        text=(
+                            f"Retrieved diagram data:\n"
+                            f"Type: {result['diagram_type']}\n"
+                            f"Elements: {len(result['content'].get('elements', []))}\n"
+                            f"Connections: {len(result['content'].get('connections', []))}"
+                        ),
                     )
                 ]
             else:
-                return [TextContent("Failed to retrieve diagram data")]
+                return [
+                    TextContent(type="text", text="Failed to retrieve diagram data")
+                ]
 
         else:
-            return [TextContent(f"Unknown tool: {name}")]
+            return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
     except Exception as e:
         logger.error(f"Error handling draw.io tool {name}: {str(e)}")
-        return [TextContent(f"Error processing request: {str(e)}")]
+        return [TextContent(type="text", text=f"Error processing request: {str(e)}")]

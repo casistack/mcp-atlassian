@@ -29,6 +29,7 @@ This file serves as our primary testing tool, simulating exactly how the AI woul
 2. Confluence Tools
 3. Jira Tools
 4. Template Tools
+5. Draw.io Tools
 
 ## Tools and Test Scenarios
 
@@ -279,6 +280,38 @@ This file serves as our primary testing tool, simulating exactly how the AI woul
   - Create with basic template
   - Create with parameters
   - Create with invalid template
+
+### 5. Draw.io Tools
+
+#### 5.1 create_diagram ⚠️
+- **Description**: Create new draw.io diagrams in Confluence pages
+- **Status**: NEEDS TESTING
+- **Test Scenarios**:
+  - Create network diagram with multiple nodes and connections
+  - Create flowchart with decision points
+  - Create cloud architecture diagram
+  - Test all shape types and connectors
+  - Test styling options
+  - Test error handling
+
+#### 5.2 update_diagram ⚠️
+- **Description**: Update existing draw.io diagrams
+- **Status**: NEEDS TESTING
+- **Test Scenarios**:
+  - Update element positions
+  - Add new elements
+  - Modify connections
+  - Update styles
+  - Test error handling for invalid macro IDs
+
+#### 5.3 get_diagram ⚠️
+- **Description**: Retrieve diagram data and metadata
+- **Status**: NEEDS TESTING
+- **Test Scenarios**:
+  - Get diagram content
+  - Get diagram metadata
+  - Test error handling for non-existent diagrams
+  - Verify data structure matches schema
 
 ## Test Implementation Plan
 

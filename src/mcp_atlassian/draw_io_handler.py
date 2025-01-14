@@ -7,11 +7,14 @@ It handles diagram creation, updating, and retrieval through the Confluence Clou
 import base64
 import json
 import logging
-from typing import Dict, Optional, Union, List, Tuple
+from typing import Dict, Optional, Union, List, Tuple, Any
 from dataclasses import dataclass
 from enum import Enum
+import xml.etree.ElementTree as ElementTree
 
+# Configure logging
 logger = logging.getLogger("mcp-atlassian")
+logger.setLevel(logging.DEBUG)
 
 
 class DiagramType(Enum):
@@ -139,8 +142,8 @@ class ShapeType(Enum):
     STEP = "step"
     CUBE = "cube"
     CYLINDER = "cylinder"
-    CLOUD = "cloud"
-    DOCUMENT = "document"
+    SIMPLE_CLOUD = "cloud"
+    BASIC_DOCUMENT = "document2"
     STAR = "star"
 
 
@@ -279,13 +282,122 @@ class DiagramData:
         Returns:
             DiagramData instance
         """
-        xml_content = base64.b64decode(base64_str).decode("utf-8")
-        # Parse XML to extract diagram type and content
-        # This is a placeholder for actual XML parsing logic
-        return cls(
-            diagram_type=DiagramType.FLOWCHART,  # Default type
-            content={},  # Parsed content would go here
-        )
+        try:
+            xml_content = base64.b64decode(base64_str).decode("utf-8")
+            logger.debug(f"Decoded XML content: {xml_content}")
+
+            # Parse XML
+            import xml.etree.ElementTree as ET
+
+            root = ET.fromstring(xml_content)
+
+            # Get diagram type from the diagram name
+            diagram = root.find("diagram")
+            if diagram is None:
+                raise ValueError("No diagram element found in XML")
+
+            diagram_name = diagram.get("name", "flowchart")
+            try:
+                diagram_type = DiagramType(diagram_name)
+            except ValueError:
+                diagram_type = DiagramType.FLOWCHART  # Default to flowchart
+
+            # Get model and root
+            model = diagram.find("mxGraphModel")
+            if model is None:
+                raise ValueError("No mxGraphModel element found in XML")
+
+            root_elem = model.find("root")
+            if root_elem is None:
+                raise ValueError("No root element found in XML")
+
+            # Extract style from model attributes
+            style = DiagramStyle(
+                grid=model.get("grid", "1").lower() == "true",
+                guides=model.get("guides", "1").lower() == "true",
+                connect=model.get("connect", "1").lower() == "true",
+                page_width=int(model.get("pageWidth", "850")),
+                page_height=int(model.get("pageHeight", "1100")),
+                background=model.get("background", "#ffffff"),
+            )
+
+            # Extract elements and connections
+            elements = []
+            connections = []
+            id_map = {}  # Map internal IDs to user-provided IDs
+
+            for cell in root_elem.findall("mxCell"):
+                cell_id = cell.get("id")
+                if cell_id in ("0", "1"):  # Skip root cells
+                    continue
+
+                geometry = cell.find("mxGeometry")
+                if geometry is None:
+                    continue
+
+                style_str = cell.get("style", "")
+                style_dict = dict(
+                    s.split("=") for s in style_str.split(";") if "=" in s
+                )
+
+                if cell.get("edge") == "1":  # It's a connection
+                    connections.append(
+                        {
+                            "source": id_map.get(cell.get("source")),
+                            "target": id_map.get(cell.get("target")),
+                            "type": style_dict.get("edgeStyle", "straight"),
+                            "label": cell.get("value", ""),
+                            "style": {
+                                "stroke_color": style_dict.get(
+                                    "strokeColor", "#000000"
+                                ),
+                                "stroke_width": int(style_dict.get("strokeWidth", "2")),
+                                "font_size": int(style_dict.get("fontSize", "12")),
+                                "font_color": style_dict.get("fontColor", "#000000"),
+                            },
+                        }
+                    )
+                else:  # It's an element
+                    shape_type = style_dict.get("shape", "rectangle")
+                    try:
+                        shape_type = next(t for t in ShapeType if t.value == shape_type)
+                    except StopIteration:
+                        shape_type = ShapeType.RECTANGLE
+
+                    element = {
+                        "id": f"element_{cell_id}",
+                        "type": shape_type.value,
+                        "x": int(geometry.get("x", "0")),
+                        "y": int(geometry.get("y", "0")),
+                        "width": int(geometry.get("width", "120")),
+                        "height": int(geometry.get("height", "60")),
+                        "label": cell.get("value", ""),
+                        "style": {
+                            "fill_color": style_dict.get("fillColor", "#ffffff"),
+                            "stroke_color": style_dict.get("strokeColor", "#000000"),
+                            "font_size": int(style_dict.get("fontSize", "12")),
+                            "font_color": style_dict.get("fontColor", "#000000"),
+                            "shadow": style_dict.get("shadow", "0") == "1",
+                        },
+                    }
+                    elements.append(element)
+                    id_map[cell_id] = element["id"]
+
+            return cls(
+                diagram_type=diagram_type,
+                content={"elements": elements, "connections": connections},
+                style=style,
+            )
+
+        except Exception as e:
+            logger.error(f"Error parsing diagram data: {str(e)}")
+            import traceback
+
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return cls(
+                diagram_type=DiagramType.FLOWCHART,
+                content={"elements": [], "connections": []},
+            )
 
     def _generate_xml(self) -> None:
         """Generate draw.io compatible XML content.
@@ -529,58 +641,54 @@ class DrawIOHandler:
         self,
         page_id: str,
         diagram_name: str,
-        diagram_type: Union[DiagramType, str],
-        content: Dict,
-        style: Optional[DiagramStyle] = None,
-    ) -> Dict:
+        diagram_data: str,
+        location: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Create a new draw.io diagram in a Confluence page.
 
         Args:
-            page_id: Confluence page ID
-            diagram_name: Name of the diagram
-            diagram_type: Type of diagram to create
-            content: Dictionary containing diagram specification
-            style: Optional styling parameters
+            page_id: The ID of the page where the diagram will be created
+            diagram_name: The name of the diagram
+            diagram_data: Base64 encoded diagram data
+            location: Optional location in the page to insert the diagram
 
         Returns:
-            Dictionary containing the created diagram information
+            Dictionary containing success status and macro ID
         """
-        # Convert string to enum if necessary
-        if isinstance(diagram_type, str):
-            diagram_type = DiagramType(diagram_type.lower())
-
-        # Create diagram data
-        diagram = DiagramData(diagram_type, content, style)
-
-        # Generate macro content
-        macro_content = self._create_drawio_macro(
-            diagram_name=diagram_name, diagram_data=diagram.to_base64()
-        )
-
         try:
             # Get current page content
-            page_content = await self.confluence.get_page_content(page_id)
-            if not page_content:
-                raise ValueError(f"Could not get content for page {page_id}")
+            page = self.confluence.get_page_by_id(
+                page_id=page_id, expand="body.storage,version,space"
+            )
+            if not page:
+                return {"success": False, "error": f"Page {page_id} not found"}
 
-            # Append diagram macro to page content
-            new_content = f"{page_content}\n{macro_content}"
+            content = page["body"]["storage"]["value"]
 
-            # Update page
-            result = await self.confluence.update_page(
-                page_id=page_id, title=None, body=new_content  # Keep existing title
+            # Create the draw.io macro
+            macro_id = self._generate_macro_id()
+            macro = self._create_drawio_macro(macro_id, diagram_name, diagram_data)
+
+            # Insert the macro at the specified location or append to the end
+            if location:
+                # TODO: Implement location-based insertion
+                new_content = content + "\n" + macro
+            else:
+                new_content = content + "\n" + macro
+
+            # Update the page
+            result = self.confluence.update_page(
+                page_id=page_id,
+                title=page["title"],
+                body=new_content,
+                type="page",
+                representation="storage",
+                minor_edit=False,
             )
 
-            if not result:
-                raise ValueError("Failed to update page with diagram")
-
-            return {
-                "success": True,
-                "page_id": page_id,
-                "diagram_name": diagram_name,
-                "diagram_type": diagram_type.value,
-                "macro_id": self._generate_macro_id(),
-            }
+            if result:
+                return {"success": True, "macro_id": macro_id}
+            return {"success": False, "error": "Failed to update page"}
 
         except Exception as e:
             logger.error(f"Error creating diagram: {str(e)}")
@@ -606,7 +714,7 @@ class DrawIOHandler:
         """
         try:
             # Get current diagram data
-            current_data = await self._get_diagram_data(page_id, macro_id)
+            current_data = self._get_diagram_data(page_id, macro_id)
             if not current_data:
                 raise ValueError(f"Could not find diagram with macro ID {macro_id}")
 
@@ -618,7 +726,7 @@ class DrawIOHandler:
             )
 
             # Update macro content
-            result = await self._update_macro_content(
+            result = self._update_macro_content(
                 page_id=page_id, macro_id=macro_id, diagram_data=diagram.to_base64()
             )
 
@@ -642,7 +750,7 @@ class DrawIOHandler:
             Dictionary containing diagram data and metadata, or None if not found
         """
         try:
-            diagram_data = await self._get_diagram_data(page_id, macro_id)
+            diagram_data = self._get_diagram_data(page_id, macro_id)
             if not diagram_data:
                 return None
 
@@ -657,131 +765,306 @@ class DrawIOHandler:
             logger.error(f"Error retrieving diagram: {str(e)}")
             return None
 
-    def _create_drawio_macro(self, diagram_name: str, diagram_data: str) -> str:
-        """Create draw.io macro content.
+    def _create_drawio_macro(
+        self, macro_id: str, diagram_name: str, diagram_data: str
+    ) -> str:
+        """Create a draw.io macro with the given diagram data.
 
         Args:
+            macro_id: Unique identifier for the macro
             diagram_name: Name of the diagram
             diagram_data: Base64 encoded diagram data
 
         Returns:
-            Confluence storage format macro string
+            String containing the draw.io macro XML
         """
-        macro_id = self._generate_macro_id()
-        return f"""
-        <ac:structured-macro ac:name="drawio" ac:schema-version="1" ac:macro-id="{macro_id}">
-            <ac:parameter ac:name="diagramName">{diagram_name}</ac:parameter>
-            <ac:parameter ac:name="simpleViewer">false</ac:parameter>
-            <ac:parameter ac:name="diagramData">{diagram_data}</ac:parameter>
-            <ac:parameter ac:name="width">auto</ac:parameter>
-            <ac:parameter ac:name="height">auto</ac:parameter>
-        </ac:structured-macro>
-        """.strip()
+        return (
+            f'<ac:structured-macro ac:name="drawio" ac:schema-version="1" ac:macro-id="{macro_id}">'
+            f'<ac:parameter ac:name="diagramName">{diagram_name}</ac:parameter>'
+            f'<ac:parameter ac:name="contentType">application/vnd.jgraph.mxfile</ac:parameter>'
+            f'<ac:parameter ac:name="width">100%</ac:parameter>'
+            f'<ac:parameter ac:name="height">auto</ac:parameter>'
+            f'<ac:parameter ac:name="simple">false</ac:parameter>'
+            f'<ac:parameter ac:name="zoom">1.0</ac:parameter>'
+            f'<ac:parameter ac:name="border">1</ac:parameter>'
+            f'<ac:parameter ac:name="diagramData">{diagram_data}</ac:parameter>'
+            "</ac:structured-macro>"
+        )
 
-    async def _get_diagram_data(
-        self, page_id: str, macro_id: str
-    ) -> Optional[DiagramData]:
-        """Retrieve diagram data from a macro.
-
-        Args:
-            page_id: Confluence page ID
-            macro_id: ID of the diagram macro
-
-        Returns:
-            DiagramData instance or None if not found
-        """
+    def _get_diagram_data(self, page_id: str, macro_id: str) -> Optional[DiagramData]:
+        """Get diagram data from a macro."""
         try:
-            # Get page content
-            page_content = await self.confluence.get_page_content(page_id)
-            if not page_content:
+            # Get page content with macro rendered output
+            page = self.confluence.get_page_by_id(
+                page_id=page_id,
+                expand="body.storage,version,space,body.view,macroRenderedOutput",
+            )
+            if not page:
+                logger.error(f"Page {page_id} not found")
                 return None
 
-            # Find the draw.io macro with matching ID
-            import xml.etree.ElementTree as ET
+            page_content = page["body"]["storage"]["value"]
+            logger.debug(f"Raw page content: {page_content}")
 
-            root = ET.fromstring(page_content)
+            # Define all possible namespaces
+            namespaces = {
+                "ac": "http://www.atlassian.com/schema/confluence/4/ac/",
+                "ri": "http://www.atlassian.com/schema/confluence/4/ri/",
+                "at": "http://www.atlassian.com/schema/confluence/4/at/",
+                "default": "http://www.atlassian.com/schema/confluence/4/default/",
+            }
 
-            # Find draw.io macro with matching ID
-            macro = root.find(
-                f".//ac:structured-macro[@ac:name='drawio'][@ac:macro-id='{macro_id}']",
-                {"ac": "http://www.atlassian.com/schema/confluence/4/ac/"},
+            # Register namespaces for output
+            for prefix, uri in namespaces.items():
+                ElementTree.register_namespace(prefix, uri)
+
+            # Clean up XML content to handle namespace issues
+            # Replace default namespace with ac namespace
+            page_content = page_content.replace(
+                'xmlns="http://www.atlassian.com/schema/confluence/4/ac/"',
+                'xmlns:ac="http://www.atlassian.com/schema/confluence/4/ac/"',
+            )
+            page_content = page_content.replace(
+                'xmlns="http://www.atlassian.com/schema/confluence/4/ri/"',
+                'xmlns:ri="http://www.atlassian.com/schema/confluence/4/ri/"',
+            )
+            page_content = page_content.replace(
+                'xmlns="http://www.atlassian.com/schema/confluence/4/at/"',
+                'xmlns:at="http://www.atlassian.com/schema/confluence/4/at/"',
             )
 
-            if macro is None:
+            logger.debug(f"Cleaned page content: {page_content}")
+
+            try:
+                root = ElementTree.fromstring(f"<root>{page_content}</root>")
+                logger.debug(f"Successfully parsed XML root")
+                logger.debug(
+                    f"Root element: {ElementTree.tostring(root, encoding='unicode', method='xml')}"
+                )
+            except ElementTree.ParseError as e:
+                logger.error(f"Failed to parse XML: {str(e)}")
                 return None
 
-            # Extract diagram data
-            diagram_data = macro.find(
-                ".//ac:parameter[@ac:name='diagramData']",
-                {"ac": "http://www.atlassian.com/schema/confluence/4/ac/"},
-            )
+            # Find all structured macros first
+            all_macros = root.findall(".//ac:structured-macro", namespaces)
+            logger.debug(f"Found {len(all_macros)} total macros")
 
-            if diagram_data is None or not diagram_data.text:
-                return None
+            # Log details of each macro
+            for i, m in enumerate(all_macros):
+                logger.debug(f"Macro {i + 1}:")
+                logger.debug(f"  Name: {m.get('{{{}}}name'.format(namespaces['ac']))}")
+                logger.debug(
+                    f"  ID: {m.get('{{{}}}macro-id'.format(namespaces['ac']))}"
+                )
+                logger.debug(
+                    f"  Full XML: {ElementTree.tostring(m, encoding='unicode', method='xml')}"
+                )
 
-            # Parse the diagram data
-            return DiagramData.from_base64(diagram_data.text)
+            # Try multiple XPath patterns to find the macro
+            xpath_patterns = [
+                f".//ac:structured-macro[@ac:macro-id='{macro_id}' and @ac:name='drawio']",
+                f".//structured-macro[@macro-id='{macro_id}' and @name='drawio']",
+                f".//*[local-name()='structured-macro'][@*[local-name()='macro-id']='{macro_id}' and @*[local-name()='name']='drawio']",
+            ]
 
-        except Exception as e:
-            logger.error(f"Error retrieving diagram data: {str(e)}")
+            macro = None
+            for xpath in xpath_patterns:
+                logger.debug(f"Trying XPath pattern: {xpath}")
+                macro = root.find(xpath, namespaces)
+                if macro is not None:
+                    logger.debug(f"Found macro using pattern: {xpath}")
+                    break
+
+            if macro is not None:
+                logger.debug(
+                    f"Found target macro: {ElementTree.tostring(macro, encoding='unicode', method='xml')}"
+                )
+
+                # Try multiple patterns to find diagram data
+                diagram_data = None
+                param_patterns = [
+                    ".//ac:parameter[@ac:name='diagramData']",
+                    ".//parameter[@name='diagramData']",
+                    ".//*[local-name()='parameter'][@*[local-name()='name']='diagramData']",
+                ]
+
+                for pattern in param_patterns:
+                    logger.debug(f"Trying parameter pattern: {pattern}")
+                    diagram_data = macro.find(pattern, namespaces)
+                    if diagram_data is not None and diagram_data.text:
+                        logger.debug(f"Found diagram data using pattern: {pattern}")
+                        break
+
+                if diagram_data is not None and diagram_data.text:
+                    logger.debug(
+                        f"Found diagram data: {diagram_data.text[:100]}..."
+                    )  # Log first 100 chars
+                    return DiagramData.from_base64(diagram_data.text)
+                else:
+                    logger.error("Diagram data parameter not found or empty in macro")
+                    # Log all parameters in the macro
+                    params = macro.findall(".//ac:parameter", namespaces)
+                    logger.debug(f"Found {len(params)} parameters in macro:")
+                    for p in params:
+                        logger.debug(
+                            f"  Parameter name: {p.get('{{{}}}name'.format(namespaces['ac']))}"
+                        )
+                        logger.debug(
+                            f"  Parameter value: {p.text[:100] if p.text else 'None'}"
+                        )
+            else:
+                logger.error(f"Macro with ID {macro_id} not found")
+                # Log available macros for debugging
+                macros = root.findall(
+                    ".//ac:structured-macro[@ac:name='drawio']", namespaces
+                )
+                logger.debug(f"Available drawio macros: {len(macros)}")
+                for m in macros:
+                    logger.debug(
+                        f"  Macro ID: {m.get('{{{}}}macro-id'.format(namespaces['ac']))}"
+                    )
+
             return None
 
-    async def _update_macro_content(
-        self, page_id: str, macro_id: str, diagram_data: str
+        except Exception as e:
+            logger.error(f"Error getting diagram data: {str(e)}")
+            logger.debug("Full error details:", exc_info=True)
+            return None
+
+    def _update_macro_content(
+        self,
+        page_id: str,
+        macro_id: str,
+        diagram_data: str,
     ) -> bool:
-        """Update diagram macro content.
-
-        Args:
-            page_id: Confluence page ID
-            macro_id: ID of the diagram macro
-            diagram_data: New base64 encoded diagram data
-
-        Returns:
-            True if update was successful, False otherwise
-        """
+        """Update the content of a draw.io macro."""
         try:
-            # Get page content
-            page_content = await self.confluence.get_page_content(page_id)
-            if not page_content:
+            # Get page content with macro rendered output
+            page = self.confluence.get_page_by_id(
+                page_id=page_id,
+                expand="body.storage,version,space,body.view,macroRenderedOutput",
+            )
+            if not page:
+                logger.error(f"Page {page_id} not found")
                 return False
 
-            # Parse the content
-            import xml.etree.ElementTree as ET
+            page_content = page["body"]["storage"]["value"]
+            logger.debug(f"Page content: {page_content}")
 
-            root = ET.fromstring(page_content)
+            # Define all possible namespaces
+            namespaces = {
+                "ac": "http://www.atlassian.com/schema/confluence/4/ac/",
+                "ri": "http://www.atlassian.com/schema/confluence/4/ri/",
+                "at": "http://www.atlassian.com/schema/confluence/4/at/",
+                "default": "http://www.atlassian.com/schema/confluence/4/default/",
+            }
 
-            # Find draw.io macro with matching ID
-            macro = root.find(
-                f".//ac:structured-macro[@ac:name='drawio'][@ac:macro-id='{macro_id}']",
-                {"ac": "http://www.atlassian.com/schema/confluence/4/ac/"},
+            # Register namespaces for output
+            for prefix, uri in namespaces.items():
+                ElementTree.register_namespace(prefix, uri)
+
+            # Clean up XML content to handle namespace issues
+            # Replace default namespace with ac namespace
+            page_content = page_content.replace(
+                'xmlns="http://www.atlassian.com/schema/confluence/4/ac/"',
+                'xmlns:ac="http://www.atlassian.com/schema/confluence/4/ac/"',
+            )
+            page_content = page_content.replace(
+                'xmlns="http://www.atlassian.com/schema/confluence/4/ri/"',
+                'xmlns:ri="http://www.atlassian.com/schema/confluence/4/ri/"',
+            )
+            page_content = page_content.replace(
+                'xmlns="http://www.atlassian.com/schema/confluence/4/at/"',
+                'xmlns:at="http://www.atlassian.com/schema/confluence/4/at/"',
             )
 
-            if macro is None:
+            try:
+                root = ElementTree.fromstring(f"<root>{page_content}</root>")
+                logger.debug(f"Successfully parsed XML root")
+            except ElementTree.ParseError as e:
+                logger.error(f"Failed to parse XML: {str(e)}")
                 return False
 
-            # Update diagram data
-            diagram_param = macro.find(
-                ".//ac:parameter[@ac:name='diagramData']",
-                {"ac": "http://www.atlassian.com/schema/confluence/4/ac/"},
-            )
+            # Try multiple XPath patterns to find the macro
+            xpath_patterns = [
+                f".//ac:structured-macro[@ac:macro-id='{macro_id}' and @ac:name='drawio']",
+                f".//structured-macro[@macro-id='{macro_id}' and @name='drawio']",
+                f".//*[local-name()='structured-macro'][@*[local-name()='macro-id']='{macro_id}' and @*[local-name()='name']='drawio']",
+            ]
 
-            if diagram_param is None:
-                return False
+            macro = None
+            for xpath in xpath_patterns:
+                logger.debug(f"Trying XPath pattern: {xpath}")
+                macro = root.find(xpath, namespaces)
+                if macro is not None:
+                    logger.debug(f"Found macro using pattern: {xpath}")
+                    break
 
-            diagram_param.text = diagram_data
+            if macro is not None:
+                logger.debug(
+                    f"Found target macro: {ElementTree.tostring(macro, encoding='unicode', method='xml')}"
+                )
 
-            # Convert back to string
-            new_content = ET.tostring(root, encoding="unicode")
+                # Try multiple patterns to find diagram data parameter
+                diagram_data_param = None
+                param_patterns = [
+                    ".//ac:parameter[@ac:name='diagramData']",
+                    ".//parameter[@name='diagramData']",
+                    ".//*[local-name()='parameter'][@*[local-name()='name']='diagramData']",
+                ]
 
-            # Update the page
-            result = await self.confluence.update_page(
-                page_id=page_id, title=None, body=new_content  # Keep existing title
-            )
+                for pattern in param_patterns:
+                    logger.debug(f"Trying parameter pattern: {pattern}")
+                    diagram_data_param = macro.find(pattern, namespaces)
+                    if diagram_data_param is not None:
+                        logger.debug(
+                            f"Found diagram data parameter using pattern: {pattern}"
+                        )
+                        break
 
-            return bool(result)
+                if diagram_data_param is not None:
+                    diagram_data_param.text = diagram_data
+                    logger.debug(
+                        f"Updated diagram data: {diagram_data_param.text[:100]}..."
+                    )  # Log first 100 chars
+
+                    # Convert back to string, excluding the root element
+                    updated_content = "".join(
+                        ElementTree.tostring(child, encoding="unicode", method="xml")
+                        for child in root
+                    )
+                    logger.debug(
+                        f"Updated content: {updated_content[:500]}..."
+                    )  # Log first 500 chars
+
+                    # Update the page
+                    result = self.confluence.update_page(
+                        page_id=page_id,
+                        title=page["title"],
+                        body=updated_content,
+                        minor_edit=False,
+                    )
+
+                    return result is not None
+                else:
+                    logger.error("Diagram data parameter not found in macro")
+            else:
+                logger.error(f"Macro with ID {macro_id} not found")
+                # Log available macros for debugging
+                macros = root.findall(
+                    ".//ac:structured-macro[@ac:name='drawio']", namespaces
+                )
+                logger.debug(f"Available drawio macros: {len(macros)}")
+                for m in macros:
+                    logger.debug(
+                        f"  Macro ID: {m.get('{{{}}}macro-id'.format(namespaces['ac']))}"
+                    )
+
+            return False
 
         except Exception as e:
             logger.error(f"Error updating macro content: {str(e)}")
+            logger.debug("Full error details:", exc_info=True)
             return False
 
     @staticmethod

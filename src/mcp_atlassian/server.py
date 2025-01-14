@@ -13,6 +13,7 @@ from .confluence import ConfluenceFetcher
 from .jira import JiraFetcher
 from .search import UnifiedSearch
 from .content import TemplateHandler, ContentEditor, RichTextEditor
+from .draw_io_handler import DrawIOHandler
 from .tool_handlers import (
     handle_confluence_tools,
     handle_jira_tools,
@@ -29,6 +30,7 @@ logger.debug("Initializing content fetchers...")
 confluence_fetcher = ConfluenceFetcher()
 jira_fetcher = JiraFetcher()
 unified_search = UnifiedSearch(confluence_fetcher, jira_fetcher)
+draw_io_handler = DrawIOHandler(confluence_fetcher.confluence)
 app = Server("mcp-atlassian")
 logger.debug("Server initialized successfully")
 
@@ -1041,6 +1043,85 @@ Common Mistakes:
                 "author": "MCP Atlassian Team",
             },
         ),
+        Tool(
+            name="create_diagram",
+            description="Create a new draw.io diagram in Confluence",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "page_id": {
+                        "type": "string",
+                        "description": "ID of the page to create the diagram in",
+                    },
+                    "title": {"type": "string", "description": "Title of the diagram"},
+                    "diagram_type": {
+                        "type": "string",
+                        "description": "Type of diagram (e.g. network, flowchart, etc.)",
+                    },
+                    "elements": {
+                        "type": "array",
+                        "description": "Array of diagram elements",
+                    },
+                    "connections": {
+                        "type": "array",
+                        "description": "Array of connections between elements",
+                    },
+                    "style": {
+                        "type": "object",
+                        "description": "Styling options for the diagram",
+                    },
+                },
+                "required": ["page_id", "title", "diagram_type", "elements"],
+            },
+        ),
+        Tool(
+            name="update_diagram",
+            description="Update an existing draw.io diagram in Confluence",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "page_id": {
+                        "type": "string",
+                        "description": "ID of the page containing the diagram",
+                    },
+                    "macro_id": {
+                        "type": "string",
+                        "description": "ID of the draw.io macro to update",
+                    },
+                    "elements": {
+                        "type": "array",
+                        "description": "Updated array of diagram elements",
+                    },
+                    "connections": {
+                        "type": "array",
+                        "description": "Updated array of connections between elements",
+                    },
+                    "style": {
+                        "type": "object",
+                        "description": "Updated styling options for the diagram",
+                    },
+                },
+                "required": ["page_id", "macro_id", "elements"],
+            },
+        ),
+        Tool(
+            name="get_diagram",
+            description="Retrieve an existing draw.io diagram from Confluence",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "page_id": {
+                        "type": "string",
+                        "description": "ID of the page containing the diagram",
+                    },
+                    "macro_id": {
+                        "type": "string",
+                        "description": "ID of the draw.io macro to retrieve",
+                    },
+                },
+                "required": ["page_id", "macro_id"],
+            },
+        ),
     ]
 
     # Add draw.io tools
@@ -1094,6 +1175,11 @@ async def call_tool(name: str, arguments: Any) -> Sequence[TextContent]:
             "create_from_jira_template",
         ]:
             return handle_jira_tools(name, arguments, jira_fetcher)
+
+        # Handle draw.io tools
+        if name in ["create_diagram", "update_diagram", "get_diagram"]:
+            draw_io_handler = DrawIOHandler(confluence_fetcher.confluence)
+            return await handle_draw_io_tools(name, arguments, draw_io_handler)
 
         raise ValueError(f"Unknown tool: {name}")
 

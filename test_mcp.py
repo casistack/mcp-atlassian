@@ -75,17 +75,25 @@ def validate_config():
 
 def format_tool_result(result: list[TextContent]) -> Any:
     """Format tool result for display."""
+    print(f"\nDEBUG: Raw tool result: {result}")
+
     if not result:
+        print("DEBUG: Empty result")
         return None
 
     # Get the first text content
-    text_content = result[0]
-
-    # If it's JSON, parse it
     try:
-        return json.loads(text_content.text)
-    except json.JSONDecodeError:
-        return text_content.text
+        text_content = result[0]
+        print(f"DEBUG: Text content: {text_content}")
+
+        # If it's JSON, parse it
+        try:
+            return json.loads(text_content.text)
+        except json.JSONDecodeError:
+            return text_content.text
+    except (IndexError, AttributeError) as e:
+        print(f"DEBUG: Error processing result: {str(e)}")
+        return None
 
 
 async def create_test_issue() -> Optional[str]:
@@ -681,6 +689,252 @@ async def test_rest_api_guide_update():
         print(traceback.format_exc())
 
 
+async def test_draw_io_diagrams():
+    """Test creating and managing draw.io diagrams in Confluence."""
+    print("\n=== Testing Draw.io Diagram Tools ===")
+
+    try:
+        # First, get a valid space key
+        print("\nFetching available spaces...")
+        config = Config.from_env()
+        confluence = ConfluenceFetcher()
+        spaces = confluence.get_spaces()
+
+        if not spaces or "results" not in spaces or not spaces["results"]:
+            print("ERROR: No Confluence spaces available")
+            return
+
+        space = spaces["results"][0]
+        space_key = space["key"]
+        print(f"Using space: {space['name']} (key: {space_key})")
+
+        # Create a new page to hold our test diagrams
+        print("\nCreating test page...")
+        page_result = await call_tool(
+            "confluence_create_page",
+            {
+                "space_key": space_key,
+                "title": f"Test Network Diagram {int(time.time())}",
+                "content": [
+                    {"type": "text", "content": "This page contains test diagrams."}
+                ],
+            },
+        )
+
+        print(f"\nDEBUG: Page creation result: {page_result}")
+        formatted_result = format_tool_result(page_result)
+
+        if formatted_result is None:
+            print("ERROR: Failed to create test page - invalid result format")
+            return
+
+        if isinstance(formatted_result, str):
+            print(f"ERROR: Unexpected result format: {formatted_result}")
+            return
+
+        page_id = formatted_result.get("page_id")
+        if not page_id:
+            print("ERROR: Failed to create test page - no page ID returned")
+            print(f"Result: {formatted_result}")
+            return
+
+        print(f"Created test page with ID: {page_id}")
+
+        # Create a network diagram
+        print("\nCreating network diagram...")
+        diagram_result = await call_tool(
+            "create_diagram",
+            {
+                "page_id": page_id,
+                "diagram_name": "Test Network Infrastructure",
+                "diagram_type": "network",
+                "elements": [
+                    {
+                        "id": "internet",
+                        "type": "mxgraph.networks.cloud",
+                        "x": 50,
+                        "y": 50,
+                        "width": 100,
+                        "height": 80,
+                        "label": "Internet",
+                        "style": {
+                            "fill_color": "#f5f5f5",
+                            "stroke_color": "#666666",
+                        },
+                    },
+                    {
+                        "id": "firewall",
+                        "type": "mxgraph.networks.firewall",
+                        "x": 200,
+                        "y": 60,
+                        "width": 60,
+                        "height": 60,
+                        "label": "Firewall",
+                        "style": {
+                            "fill_color": "#ff9999",
+                            "stroke_color": "#ff0000",
+                        },
+                    },
+                    {
+                        "id": "router",
+                        "type": "mxgraph.networks.router",
+                        "x": 320,
+                        "y": 60,
+                        "width": 60,
+                        "height": 60,
+                        "label": "Core Router",
+                        "style": {
+                            "fill_color": "#99ccff",
+                            "stroke_color": "#0066cc",
+                        },
+                    },
+                    {
+                        "id": "switch1",
+                        "type": "mxgraph.networks.switch",
+                        "x": 320,
+                        "y": 180,
+                        "width": 60,
+                        "height": 60,
+                        "label": "Main Switch",
+                        "style": {
+                            "fill_color": "#99ff99",
+                            "stroke_color": "#009900",
+                        },
+                    },
+                    {
+                        "id": "server1",
+                        "type": "mxgraph.networks.server",
+                        "x": 200,
+                        "y": 300,
+                        "width": 80,
+                        "height": 100,
+                        "label": "Web Server",
+                        "style": {
+                            "fill_color": "#ffcc99",
+                            "stroke_color": "#ff9900",
+                        },
+                    },
+                    {
+                        "id": "server2",
+                        "type": "mxgraph.networks.server",
+                        "x": 440,
+                        "y": 300,
+                        "width": 80,
+                        "height": 100,
+                        "label": "Database",
+                        "style": {
+                            "fill_color": "#ffcc99",
+                            "stroke_color": "#ff9900",
+                        },
+                    },
+                ],
+                "connections": [
+                    {
+                        "source": "internet",
+                        "target": "firewall",
+                        "type": "straight",
+                        "label": "WAN",
+                    },
+                    {
+                        "source": "firewall",
+                        "target": "router",
+                        "type": "straight",
+                        "label": "DMZ",
+                    },
+                    {
+                        "source": "router",
+                        "target": "switch1",
+                        "type": "straight",
+                        "label": "1Gbps",
+                    },
+                    {
+                        "source": "switch1",
+                        "target": "server1",
+                        "type": "straight",
+                        "label": "LAN 1",
+                    },
+                    {
+                        "source": "switch1",
+                        "target": "server2",
+                        "type": "straight",
+                        "label": "LAN 2",
+                    },
+                ],
+                "style": {
+                    "theme": "default",
+                    "background": "white",
+                    "grid": True,
+                    "shadow": True,
+                },
+            },
+        )
+        formatted_result = format_tool_result(diagram_result)
+        print(f"Create diagram result: {json.dumps(formatted_result, indent=2)}")
+
+        # Wait for the page to be updated
+        time.sleep(5)  # Wait 5 seconds
+
+        # Test Case 2: Get diagram data
+        print("\n2. Testing diagram data retrieval...")
+        if formatted_result and formatted_result.get("macro_id"):
+            macro_id = formatted_result.get("macro_id")
+            get_result = await call_tool(
+                "get_diagram", {"page_id": page_id, "macro_id": macro_id}
+            )
+            print(
+                f"Get diagram result: {json.dumps(format_tool_result(get_result), indent=2)}"
+            )
+
+        # Test Case 3: Update diagram
+        print("\n3. Testing diagram update...")
+        if formatted_result and formatted_result.get("macro_id"):
+            update_result = await call_tool(
+                "update_diagram",
+                {
+                    "page_id": page_id,
+                    "macro_id": macro_id,
+                    "elements": [
+                        # Add a new server
+                        {
+                            "id": "server3",
+                            "type": "mxgraph.networks.server",
+                            "x": 320,
+                            "y": 300,
+                            "width": 80,
+                            "height": 100,
+                            "label": "Cache Server",
+                            "style": {
+                                "fill_color": "#ffcc99",
+                                "stroke_color": "#ff9900",
+                            },
+                        }
+                    ],
+                    "connections": [
+                        {
+                            "source": "switch1",
+                            "target": "server3",
+                            "type": "straight",
+                            "label": "LAN 3",
+                        }
+                    ],
+                },
+            )
+            print(
+                f"Update diagram result: {json.dumps(format_tool_result(update_result), indent=2)}"
+            )
+
+        # Clean up - delete the test page
+        print("\n4. Cleaning up...")
+        await call_tool("confluence_delete_page", {"page_id": page_id})
+
+    except Exception as e:
+        print(f"Error during test: {str(e)}")
+        import traceback
+
+        print("\nFull error details:")
+        print(traceback.format_exc())
+
+
 if __name__ == "__main__":
     # asyncio.run(test_unified_search())
     # asyncio.run(test_get_confluence_templates())
@@ -688,4 +942,5 @@ if __name__ == "__main__":
     # asyncio.run(test_create_from_confluence_template())
     # asyncio.run(test_confluence_update_page())
     # asyncio.run(test_space_key_validation())
-    asyncio.run(test_rest_api_guide_update())
+    # asyncio.run(test_rest_api_guide_update())
+    asyncio.run(test_draw_io_diagrams())

@@ -10,14 +10,14 @@ Model Context Protocol (MCP) server for Atlassian Cloud products (Confluence and
 ## Features
 
 ### Core Features
-- Search and read Confluence spaces/pages
-- Create and update Confluence pages with rich formatting
-- Manage Confluence page comments and attachments
-- Search and read Jira issues
-- Create and update Jira issues
-- Get project issues and metadata
+- Search and read Confluence spaces/pages with advanced CQL support
+- Create and update Confluence pages with professional rich formatting
+- Manage Confluence page comments, sections, and attachments
+- Search and read Jira issues with JQL support
+- Create and update Jira issues with custom fields
+- Get project issues and metadata with expanded fields
 - Unified search across Confluence and Jira
-- Template-based content creation
+- Template-based content creation with variable substitution
 - Advanced content formatting and section management
 
 ### Advanced Capabilities
@@ -25,23 +25,29 @@ Model Context Protocol (MCP) server for Atlassian Cloud products (Confluence and
   - Cross-platform search (Confluence and Jira)
   - Content excerpts and smart truncation
   - Results sorted by last modified date
+  - Advanced filtering with CQL/JQL support
 
 - **Content Management**
-  - Section-based updates
-  - Rich content formatting
-  - Template management
-  - Attachment handling
-  - Comment management
+  - Section-based updates with intelligent merging
+  - Rich content formatting with professional layouts
+  - Template management with variable substitution
+  - Attachment handling with metadata support
+  - Comment management with formatting options
+  - Batch content operations
+  - Content validation and error handling
 
 - **Advanced Formatting**
-  - Headings (h1-h6)
-  - Nested lists
-  - Code blocks with language support
-  - Tables with rich formatting
-  - Information panels and callouts
-  - Status indicators
-  - Expandable sections
+  - Headings (h1-h6) with proper hierarchy
+  - Nested lists (bullet and numbered)
+  - Code blocks with language support and line numbers
+  - Tables with rich formatting and sorting
+  - Information panels and callouts with titles
+  - Status indicators with color support
+  - Expandable sections with custom titles
   - Multi-column layouts
+  - Interactive elements (tabs, expanders)
+  - Warning and notification panels
+  - Table of contents with customizable levels
 
 ## API
 
@@ -57,66 +63,97 @@ Model Context Protocol (MCP) server for Atlassian Cloud products (Confluence and
 #### Confluence Tools
 
 - **confluence_search**
-  - Search Confluence content using CQL
+  - Search Confluence content using CQL (Confluence Query Language)
   - Inputs:
-    - `query` (string): CQL query string
+    - `query` (string): CQL query string (e.g. 'type=page AND space=DEV')
     - `limit` (number, optional): Results limit (1-50, default: 10)
   - Returns:
-    - Array of search results with page_id, title, space, url, last_modified, type, and excerpt
+    - Array of search results with page_id, title, space, url, last_modified, type, excerpt, and author
 
 - **confluence_get_page**
-  - Get content of a specific Confluence page
+  - Retrieve content and metadata of a specific Confluence page
   - Inputs:
     - `page_id` (string): Confluence page ID
     - `include_metadata` (boolean, optional): Include page metadata (default: true)
 
 - **confluence_get_comments**
-  - Get comments for a specific Confluence page
+  - Retrieve all comments for a specific Confluence page
   - Input: `page_id` (string)
+  - Returns: Array of comments with author info and timestamps
 
 - **confluence_create_page**
-  - Create a new Confluence page
+  - Create new Confluence page with professional formatting
   - Inputs:
     - `space_key` (string): Space key
     - `title` (string): Page title
-    - `content` (string): Page content
-    - `parent_id` (string, optional): Parent page ID
+    - `content` (array): Content blocks in rich text format
+      - Supported blocks: heading, text, list, table, panel, status, code, toc
+      - Each block type has specific properties (e.g., level for headings)
 
 - **confluence_update_page**
-  - Update existing Confluence page
+  - Update existing Confluence page with rich formatting
   - Inputs:
     - `page_id` (string): Page ID
-    - `content` (string): Updated content
     - `title` (string, optional): New title
+    - `content` (array): Content blocks (same format as create_page)
+    - `minor_edit` (boolean, optional): Mark as minor edit
 
 #### Jira Tools
 
 - **jira_get_issue**
-  - Get details of a specific Jira issue
+  - Retrieve detailed information about a Jira issue
   - Inputs:
     - `issue_key` (string): Jira issue key (e.g., 'PROJ-123')
     - `expand` (string, optional): Fields to expand
 
 - **jira_search**
-  - Search Jira issues using JQL
+  - Search Jira issues using JQL (Jira Query Language)
   - Inputs:
     - `jql` (string): JQL query string
     - `fields` (string, optional): Comma-separated fields (default: "*all")
     - `limit` (number, optional): Results limit (1-50, default: 10)
 
-- **jira_get_project_issues**
-  - Get all issues for a specific Jira project
-  - Inputs:
-    - `project_key` (string): Project key
-    - `limit` (number, optional): Results limit (1-50, default: 10)
-
 - **jira_create_issue**
-  - Create a new Jira issue
+  - Create a new Jira issue with custom fields
   - Inputs:
     - `project_key` (string): Project key
     - `summary` (string): Issue summary
     - `description` (string): Issue description
-    - `issue_type` (string): Issue type (e.g., 'Task', 'Bug')
+    - `issue_type` (string, optional): Issue type (default: 'Task')
+    - `priority` (string, optional): Priority level
+    - `assignee` (string, optional): Username to assign
+    - `labels` (array, optional): Labels to add
+    - `custom_fields` (object, optional): Custom field values
+
+- **jira_update_issue**
+  - Update existing Jira issue
+  - Inputs:
+    - `issue_key` (string): Issue key to update
+    - `summary` (string, optional): New summary
+    - `description` (string, optional): New description
+    - `status` (string, optional): New status
+    - `priority` (string, optional): New priority
+    - `assignee` (string, optional): New assignee
+    - `labels` (array, optional): New labels
+    - `custom_fields` (object, optional): New custom field values
+
+#### Template Tools
+
+- **create_from_confluence_template**
+  - Create Confluence page using predefined template
+  - Inputs:
+    - `template_id` (string): Template ID
+    - `space_key` (string): Target space key
+    - `title` (string): Page title
+    - `template_parameters` (object, optional): Variable substitutions
+
+- **create_from_jira_template**
+  - Create Jira issue using predefined template
+  - Inputs:
+    - `template_id` (string): Template ID
+    - `project_key` (string): Target project key
+    - `summary` (string): Issue summary
+    - `template_parameters` (object, optional): Variable substitutions
 
 ## Usage with Claude Desktop
 
